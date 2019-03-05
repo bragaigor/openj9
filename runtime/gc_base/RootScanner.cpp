@@ -219,6 +219,15 @@ MM_RootScanner::doStringTableSlot(J9Object **slotPtr, GC_StringTableIterator *st
 }
 
 /**
+ * @todo Provide function documentation
+ */
+void 
+MM_RootScanner::doDoubleMappedObjectSlot(ArrayletTableEntry *slotPtr, GC_HashTableIterator *hashTableIterator)
+{
+	doSlot((J9Object **)slotPtr);
+}
+
+/**
  * @Perform operation on the given string cache table slot.
  * @String table cache contains cached entries of string table, it's
  * @a subset of string table entries.
@@ -851,6 +860,35 @@ MM_RootScanner::scanJVMTIObjectTagTables(MM_EnvironmentBase *env)
 }
 #endif /* J9VM_OPT_JVMTI */
 
+#if defined(J9VM_GC_VLHGC)
+void 
+MM_RootScanner::scanDoubleMappedObjects(MM_EnvironmentBase *env)
+{
+	printf("Calling scanDoubleMappedObjects() from RootScanner()\n");
+	if(_singleThread || J9MODRON_HANDLE_NEXT_WORK_UNIT(env)) {
+		printf("Inside if(_singleThread || J9MODRON_HANDLE_NEXT_WORK_UNIT(env)){}\n");
+		J9HashTable* arrayletHashTable = _extensions->getArrayletHashTable();
+		reportScanningStarted(RootScannerEntity_DoubleMappedObjects);
+		if(arrayletHashTable != NULL) {
+			printf("arrayletHashTable is not NULL!!!!: %p\n", (void*)arrayletHashTable);
+			GC_HashTableIterator hashTableIterator(arrayletHashTable);
+			// ArrayletTableEntry *entry = NULL;
+			ArrayletTableEntry *slot = NULL;
+			int i = 0;
+			while(NULL != (slot = (ArrayletTableEntry *)hashTableIterator.nextSlot())) {
+				// Assert_MM_true(0 != entry->rememberedInstances);
+				doDoubleMappedObjectSlot(slot, &hashTableIterator);
+				i++;
+			}
+			printf("There were %d arraylet elements in the arraylet Hash Table! Real value hashTableGetCount(): %zu\n", i, (size_t)hashTableGetCount(arrayletHashTable));
+		} else {
+			printf("arrayletHashTable is NULL\n");
+		}
+		reportScanningEnded(RootScannerEntity_DoubleMappedObjects);
+	}
+}
+#endif /* J9VM_GC_VLHGC */
+
 /**
  * Scan all root set references from the VM into the heap.
  * For all slots that are hard root references into the heap, the appropriate slot handler will be called.
@@ -975,6 +1013,12 @@ MM_RootScanner::scanClearable(MM_EnvironmentBase *env)
 		scanJVMTIObjectTagTables(env);
 	}
 #endif /* J9VM_OPT_JVMTI */
+
+#if defined(J9VM_GC_VLHGC)
+	if (_includeDoubleMap) {
+		scanDoubleMappedObjects(env);
+	}
+#endif /* J9VM_GC_VLHGC */
 }
 
 /**
@@ -1023,6 +1067,12 @@ MM_RootScanner::scanAllSlots(MM_EnvironmentBase *env)
 		scanJVMTIObjectTagTables(env);
 	}
 #endif /* J9VM_OPT_JVMTI */
+
+#if defined(J9VM_GC_VLHGC)
+        if (_includeDoubleMap) {
+                scanDoubleMappedObjects(env);
+        }
+#endif /* J9VM_GC_VLHGC */
 
 	scanOwnableSynchronizerObjects(env);
 }

@@ -89,6 +89,7 @@ protected:
 #endif /* J9VM_GC_MODRON_SCAVENGER */	 	
 	bool _classDataAsRoots; /**< Should all classes (and class loaders) be treated as roots. Default true, should set to false when class unloading */
 	bool _includeJVMTIObjectTagTables; /**< Should the iterator include the JVMTIObjectTagTables. Default true, should set to false when doing JVMTI object walks */
+	bool _includeDoubleMap; /**< Should the GC policy be BALANCED. Default true. */
 	bool _trackVisibleStackFrameDepth; /**< Should the stack walker be told to track the visible frame depth. Default false, should set to true when doing JVMTI walks that report stack slots */
 
 	U_64 _entityStartScanTime; /**< The start time of the scan of the current scanning entity, or 0 if no entity is being scanned.  Defaults to 0. */
@@ -302,6 +303,7 @@ public:
 #endif /* J9VM_GC_MODRON_SCAVENGER */
 		, _classDataAsRoots(true)
 		, _includeJVMTIObjectTagTables(true)
+		, _includeDoubleMap(true)
 		, _trackVisibleStackFrameDepth(false)
 		, _entityStartScanTime(0)
 		, _entityIncrementStartTime(0)
@@ -364,6 +366,12 @@ public:
 		_includeJVMTIObjectTagTables = includeJVMTIObjectTagTables;
 	}
 #endif /* J9VM_OPT_JVMTI */
+
+#if defined(J9VM_GC_VLHGC)
+	void setIncludeDoubleMap(bool includeDoubleMap) {
+		_includeDoubleMap = includeDoubleMap;
+	}
+#endif /* J9VM_GC_VLHGC */
 
 	/** Set whether the iterator will scan the JVMTIObjectTagTables (if applicable to the scan type) */
 	void setTrackVisibleStackFrameDepth(bool trackVisibleStackFrameDepth) {
@@ -432,6 +440,10 @@ public:
 	void scanJVMTIObjectTagTables(MM_EnvironmentBase *env);
 #endif /* J9VM_OPT_JVMTI */
 
+#if defined(J9VM_GC_VLHGC)
+	void scanDoubleMappedObjects(MM_EnvironmentBase *env);
+#endif /* J9VM_GC_VLHGC */
+
 	virtual void doClassLoader(J9ClassLoader *classLoader);
 
 	virtual void scanWeakReferenceObjects(MM_EnvironmentBase *env);
@@ -485,6 +497,7 @@ public:
 	virtual void doStringCacheTableSlot(J9Object **slotPtr);
 	virtual void doVMClassSlot(J9Class **slotPtr, GC_VMClassSlotIterator *vmClassSlotIterator);
 	virtual void doVMThreadSlot(J9Object **slotPtr, GC_VMThreadIterator *vmThreadIterator);
+	virtual void doDoubleMappedObjectSlot(ArrayletTableEntry *slotPtr, GC_HashTableIterator *hashTableIterator);
 	
 	/**
 	 * Called for each object stack slot. Subclasses may override.

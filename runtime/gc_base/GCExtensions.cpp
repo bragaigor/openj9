@@ -30,6 +30,9 @@
 #include "j9nongenerated.h"
 #include "j9port.h"
 #include "util_api.h"
+#include "ArrayletLeafIterator.hpp"
+#include "Heap.hpp"
+#include "HeapRegionManager.hpp"
 
 #include "EnvironmentBase.hpp"
 #include "Forge.hpp"
@@ -41,6 +44,17 @@
 #include "ReferenceChainWalkerMarkMap.hpp"
 #include "SublistPool.hpp"
 #include "Wildcard.hpp"
+#include <sys/mman.h>
+
+/*
+struct ArrayletTableEntry {
+	void *heapAddr; / Arraylet address in the heap 
+	void *contiguousAddr; / Arraylet address in contiguous region of memory 
+
+	static UDATA hash(void *key, void *userData) { return (UDATA)((ArrayletTableEntry*)key)->heapAddr; }
+	static UDATA equal(void *leftKey, void *rightKey, void *userData) { return ((ArrayletTableEntry*)leftKey)->heapAddr == ((ArrayletTableEntry*)rightKey)->heapAddr; }
+};
+*/
 
 MM_GCExtensions *
 MM_GCExtensions::newInstance(MM_EnvironmentBase *env)
@@ -83,8 +97,28 @@ bool
 MM_GCExtensions::initialize(MM_EnvironmentBase *env)
 {
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
+	OMRPORT_ACCESS_FROM_J9PORT(privatePortLibrary);
 
 	if (!MM_GCExtensionsBase::initialize(env)) {
+		goto failed;
+	}
+
+	/* Initialize arraylet hash table */
+	/* Create hash table. Maps arraylet heap addresses to contiguous arraylet leaf addresses */
+	arrayletHashTable = hashTableNew(
+                                   privateOmrPortLibrary,
+                                   J9_GET_CALLSITE(),
+                                   2677, // 113,
+                                   sizeof(ArrayletTableEntry),
+                                   sizeof(uint32_t *),
+                                   J9HASH_TABLE_ALLOW_SIZE_OPTIMIZATION,
+                                   OMRMEM_CATEGORY_MM,
+                                   ArrayletTableEntry::hash,
+                                   ArrayletTableEntry::equal,
+                                   NULL,
+                                   getJavaVM());
+
+	if(!_arrayletLock.initialize(env, &lnrlOptions, "MM_GCExtensions:ArrayletTableEntry:lock")) {
 		goto failed;
 	}
 
@@ -271,4 +305,107 @@ MM_GCExtensions::computeDefaultMaxHeap(MM_EnvironmentBase *env)
 #endif /* OMR_ENV_DATA64 */
 
 	memoryMax = MM_Math::roundToFloor(heapAlignment, memoryMax);
+}
+
+void* 
+MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr, bool isDiscontiguous) 
+{
+	printf(">>>\t>>>\tCalling double map from MM_GCExtensions\n");
+	J9JavaVM *javaVM = getJavaVM();
+	PORT_ACCESS_FROM_ENVIRONMENT(env);
+	OMRPORT_ACCESS_FROM_J9PORT(privatePortLibrary);
+
+	GC_ArrayletLeafIterator arrayletLeafIterator(javaVM, (J9IndexableObject*)objectPtr);
+	UDATA arrayletLeafCount = arrayletLeafIterator.getNumLeafs();
+	void* result = NULL;
+	void* arrayletLeaveAddrs[arrayletLeafCount];
+	MM_Heap *heap = getHeap();
+	UDATA elementsSize = indexableObjectModel.getDataSizeInBytes((J9IndexableObject*)objectPtr);
+        UDATA regionSize = heap->getHeapRegionManager()->getRegionSize();
+
+	GC_SlotObject *slotObject = NULL;
+	int count = 0;
+
+	while (NULL != (slotObject = arrayletLeafIterator.nextLeafPointer())) {
+		void *currentLeaf = slotObject->readReferenceFromSlot();
+		if(count == (int)arrayletLeafCount - 1 && ((isDiscontiguous && elementsSize % regionSize == 0) || !isDiscontiguous)) {
+			printf("Leaf with index: %d is the end of spine, ignoring it.\n", count);
+			continue;
+		}
+		arrayletLeaveAddrs[count] = currentLeaf;
+		count++;
+	}
+
+	ArrayletTableEntry addrEntry;
+	UDATA arrayletLeafSize = javaVM->arrayletLeafSize;
+	UDATA pageSize = j9mmap_get_region_granularity(NULL); /* get pagesize  or j9vmem_supported_page_sizes()[0]? */
+	OMRMemCategory *category = omrmem_get_category(OMRMEM_CATEGORY_PORT_LIBRARY);
+
+	// Get heap and from there call an OMR API that will doble map everything
+	printf("\t\t>>>>>>>>>> total elements size: %zu, Region size: %zu, UDATA_MAX: %zu, count: %d, arraylet leaf size: %zu\n", elementsSize, regionSize, UDATA_MAX, count, arrayletLeafSize);
+	result = heap->doubleMapArraylet(env, arrayletLeaveAddrs, count, arrayletLeafSize, elementsSize, 
+				&addrEntry.identifier,
+				pageSize,
+				category);
+
+	if(result == NULL) { /* Double map failed */
+		return NULL;
+	}
+
+	addrEntry.heapAddr = (void*)objectPtr;
+	addrEntry.contiguousAddr = result;
+	addrEntry.dataSize = addrEntry.identifier.size; /* When arraylet storage is updated this should be larger than actualSize */
+	addrEntry.actualSize = elementsSize;
+
+	void *findObject = NULL;
+	findObject = hashTableFind(arrayletHashTable, &addrEntry);
+
+	if(findObject == NULL) {
+		_arrayletLock.acquire();
+		printf("\t############## Hashtable count before adding it: %zu, adding address as key: %p, val: %p, dataSize: %zu\n",(size_t)hashTableGetCount(arrayletHashTable), addrEntry.heapAddr, result, (size_t)elementsSize);
+		ArrayletTableEntry *entry = (ArrayletTableEntry *)hashTableAdd(arrayletHashTable, &addrEntry);
+		printf("\t############## Hashtable count AFTER adding it: %zu\n",(size_t)hashTableGetCount(arrayletHashTable));
+		_arrayletLock.release();
+
+		if(entry == NULL) {
+         	       printf("\t*************************************************** Failed to add entry to the arraylet hash table \n");
+                	//privateOmrPortLibrary->vmem_free_memory(privateOmrPortLibrary, result, (arrayletLeafCount * arrayletLeafSize), &newIdentifier);
+	                result = NULL;
+        	} else {
+                	printf("\t********************************************** entry added to the arraylet hashtable successfully!!! \n");
+        	}
+	} else {
+		printf("\t\tFAILED: Object already in the table. Returning NULL.\n");
+		result = NULL;
+	}
+
+	return result;
+}
+
+bool 
+MM_GCExtensions::freeDoubleMap(MM_EnvironmentBase* env, void* contiguousAddr, UDATA dataS, struct J9PortVmemIdentifier *identifier) 
+{
+	printf(">>>\t>>>\tCalling freeDoubleMap() from MM_GCExtensions\n");
+	PORT_ACCESS_FROM_ENVIRONMENT(env);
+	// void *contiguousMem = tableEntry->contiguousAddr;
+	// UDATA dataSize = tableEntry->dataSize;
+	void *contiguousMem = contiguousAddr;
+        UDATA dataSize = dataS;
+	// MM_Heap *heap = getHeap();
+
+	printf(">>>>>>\t Amount of memory to be freed: %zu at %p, should be the same as id amount: %zu, and addr %p\n", (size_t)dataSize, contiguousMem, (size_t)identifier->size, identifier->address);
+
+	int result = -1;
+
+	// result = heap->freeDoubleMapArraylet(env, contiguousMem, dataSize);
+	// result = munmap(contiguousMem, dataSize);
+	result = j9vmem_free_memory(contiguousMem, dataSize, identifier);
+
+	if(result == -1) {
+		printf("\t ERROR: Double map free failed!!\n");
+	} else {
+		printf("\tArraylets were freed successfully!!! ***************\n");
+	}
+
+	return result != -1;
 }

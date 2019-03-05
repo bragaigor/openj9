@@ -180,6 +180,11 @@ public:
 	numArraylets(UDATA unadjustedDataSizeInBytes)
 	{
 		UDATA leafSize = _omrVM->_arrayletLeafSize;
+		/*
+		if(unadjustedDataSizeInBytes % leafSize == 0)
+			unadjustedDataSizeInBytes -= 1;
+
+		*/
 		UDATA numberOfArraylets = 1;
 		if (UDATA_MAX != leafSize) {
 			UDATA leafSizeMask = leafSize - 1;

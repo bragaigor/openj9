@@ -1578,6 +1578,9 @@ public:
 #endif /* J9VM_GC_FINALIZATION */
 		scanJNIGlobalReferences(env);
 		scanStringTable(env);
+#if defined(J9VM_GC_VLHGC)
+                scanDoubleMappedObjects(env);
+#endif /* J9VM_GC_VLHGC */
 		scanMonitorReferences(env);
 		scanJNIWeakGlobalReferences(env);
 #if defined(J9VM_OPT_JVMTI)

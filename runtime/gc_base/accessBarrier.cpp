@@ -748,6 +748,7 @@ j9gc_objaccess_getObjectHashCode(J9JavaVM *vm, J9Object* object)
 void*
 j9gc_objaccess_jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray array, jboolean *isCopy)
 {
+	printf("\t*************** Hi from inside j9gc_objaccess_jniGetPrimitiveArrayCritical() on OpenJ9!! \n");
 	MM_ObjectAccessBarrier *barrier = MM_GCExtensions::getExtensions(vmThread->javaVM)->accessBarrier;
 	return barrier->jniGetPrimitiveArrayCritical(vmThread, array, isCopy);
 }

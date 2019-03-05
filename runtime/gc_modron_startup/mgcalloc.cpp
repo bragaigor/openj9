@@ -49,6 +49,7 @@
 #include "ObjectAccessBarrier.hpp"
 #include "ObjectAllocationInterface.hpp"
 #include "ObjectModel.hpp"
+#include "ArrayletLeafIterator.hpp"
 
 #if defined (J9VM_GC_REALTIME)
 #include "Scheduler.hpp"
@@ -524,6 +525,40 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 		/* The hook could release access and so the object address could change (the value is preserved).  Since this
 		 * means the hook could write back a different value to the variable, it must be a valid lvalue (ie: not cast).
 		 */
+
+#if defined(LINUX)
+		GC_ArrayletObjectModel::ArrayLayout layout = extensions->indexableObjectModel.getArrayLayout((J9IndexableObject*)objectPtr);
+		if(extensions->doDoubleMapping && extensions->isVLHGC() && (layout == GC_ArrayletObjectModel::Discontiguous || layout == GC_ArrayletObjectModel::Hybrid)) {
+			printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+			if(layout == GC_ArrayletObjectModel::Discontiguous) {
+                        	printf("^^^^^^^^^^^^^^^^^^^^^^^^^^^|||||||||||||||||||||^^^^^^^^^^^^^^^^^^^^^^^^^^^ layout is Discontiguous!!!\n");
+                	} else if(layout == GC_ArrayletObjectModel::Hybrid) {
+                        	printf("^^^^^^^^^^^^^^^^^^^^^^^^^^^|||||||||||||||||||||^^^^^^^^^^^^^^^^^^^^^^^^^^^ layout is Hybrid!!!\n");
+                	} else {
+                        	printf("^^^^^^^^^^^^^^^^^^^^^^^^^^^|||||||||||||||||||||^^^^^^^^^^^^^^^^^^^^^^^ Invalid layout!!!\n");
+                	}
+			J9JavaVM *javaVM = extensions->getJavaVM();
+			GC_ArrayletLeafIterator arrayletLeafIterator(javaVM, (J9IndexableObject*)objectPtr);
+			UDATA arrayletLeafCount = arrayletLeafIterator.getNumLeafs();
+
+			bool isDiscontiguous = layout == GC_ArrayletObjectModel::Discontiguous ? true : false;
+
+			void *contiguousAddr = NULL;
+			if(arrayletLeafCount > 0) {
+				printf("How many arraylet leaves are there? Answer: %zu\n", arrayletLeafCount);
+				contiguousAddr = extensions->doubleMapArraylets(env, objectPtr, isDiscontiguous);
+				if(contiguousAddr == NULL) {
+					printf("<<<<<<<<<<<< Double mapping FAILED!!! <<<<<<<<<<<<<\n");
+					objectPtr = NULL;
+					goto failDoubleMap;
+				}
+				printf("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< double mapping successfull <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n");
+			} else {
+				printf("arrayletLeafCount is zero. What should I do in this case? Ignore? \n");
+			}
+		}
+#endif
+
 		if (OMR_GC_ALLOCATE_OBJECT_INSTRUMENTABLE == (OMR_GC_ALLOCATE_OBJECT_INSTRUMENTABLE & allocateFlags)) {
 			TRIGGER_J9HOOK_VM_OBJECT_ALLOCATE_INSTRUMENTABLE(
 				vmThread->javaVM->hookInterface, 
@@ -574,6 +609,7 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 #endif /* defined(J9VM_GC_REALTIME) */
 		}
 	} else {
+failDoubleMap:
 		/* we're going to return NULL, trace this */
 		PORT_ACCESS_FROM_ENVIRONMENT(env);
 		MM_MemorySpace *memorySpace = indexableOAM.getAllocateDescription()->getMemorySpace();

@@ -4050,6 +4050,31 @@ private:
 		}
 	}
 
+	virtual void doDoubleMappedObjectSlot(ArrayletTableEntry *slotPtr, GC_HashTableIterator *hashTableIterator) 
+	{
+		ArrayletTableEntry *entry = slotPtr;
+		printf("Entry values. Key: %p, val: %p, dataSize: %zu\n", entry->heapAddr, entry->contiguousAddr, (size_t)entry->dataSize);
+		J9Object *objectPtr = (J9Object *)slotPtr->heapAddr;
+		MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCandidates += 1;
+		printf("About to call _copyForwardScheme->isLiveObject(objectPtr) objectPtr has addr: %p\n", (void*)objectPtr);
+		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
+			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
+			MM_ScavengerForwardedHeader forwardedHeader(objectPtr);
+            		objectPtr = forwardedHeader.getForwardedObject();
+			if(objectPtr == NULL) {
+				Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
+                                MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCleared += 1;
+				void* tempAddr = slotPtr->contiguousAddr;
+                        	UDATA tempData = slotPtr->dataSize;
+				J9PortVmemIdentifier *identifier = &slotPtr->identifier;
+				_extensions->freeDoubleMap(_env, tempAddr, tempData, identifier);
+                        	hashTableIterator->removeSlot();
+			} else {
+				slotPtr->heapAddr = (void *)objectPtr;
+			}
+		}
+	}
+
 	/**
 	 * @Clear the string table cache slot if the object is not marked
 	 */

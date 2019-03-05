@@ -167,6 +167,10 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 			extensions->nonDeterministicSweep = true;
 			continue;
 		}
+		if(try_scan(&scan_start, "enableDoubleMapping")) {
+                        extensions->doDoubleMapping = true;
+                        continue;
+                }
 		if(try_scan(&scan_start, "disableNonDeterministicSweep")) {
 			extensions->nonDeterministicSweep = false;
 			continue;

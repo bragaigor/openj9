@@ -2832,6 +2832,7 @@ configurateGCWithPolicyAndOptions(OMR_VM* omrVM)
 		extensions->gcModeString = "-Xgcpolicy:balanced";
 		omrVM->gcPolicy = J9_GC_POLICY_BALANCED;
 		result = MM_ConfigurationIncrementalGenerational::newInstance(&env);
+		printf("\n$$$$$$$ Selecting -Xgcpolicy:balanced as the GC policy!! $$$$$$$\n");
 		break;
 
 	case gc_policy_nogc:

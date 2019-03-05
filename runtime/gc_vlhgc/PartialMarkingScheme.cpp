@@ -1200,6 +1200,19 @@ private:
 		}
 	}
 
+	virtual void doDoubleMappedObjectSlot(ArrayletTableEntry *slotPtr, GC_HashTableIterator *hashTableIterator) {
+		printf("###################### Calling doDoubleMappedObjectSlot() from PartialMarkingScheme.cpp!! \n");
+		MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCandidates += 1;
+		if(!_markingScheme->isMarked((J9Object *)slotPtr->heapAddr)) {
+			MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCleared += 1;
+			void* tempAddr = slotPtr->contiguousAddr;
+                        UDATA tempData = slotPtr->dataSize;
+			J9PortVmemIdentifier *identifier = &slotPtr->identifier;
+			_extensions->freeDoubleMap(_env, tempAddr, tempData, identifier);
+                        hashTableIterator->removeSlot();
+		}
+	}
+
 	/**
 	 * @Clear the string table cache slot if the object is not marked
 	 */
