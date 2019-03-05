@@ -1579,6 +1579,11 @@ public:
 #endif /* J9VM_GC_FINALIZATION */
 		scanJNIGlobalReferences(env);
 		scanStringTable(env);
+#if defined(LINUX)
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+                scanDoubleMappedObjects(env);
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP*/
+#endif /* LINUX */
 		scanMonitorReferences(env);
 		scanJNIWeakGlobalReferences(env);
 #if defined(J9VM_OPT_JVMTI)
