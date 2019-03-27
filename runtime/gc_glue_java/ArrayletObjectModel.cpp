@@ -84,14 +84,18 @@ GC_ArrayletObjectModel::getArrayletLayout(J9Class* clazz, UDATA dataSizeInBytes,
 			if (extensions->isVLHGC()) {
 				adjustedHybridSpineBytesAfterMove += objectAlignmentInBytes;
 			}
-			/* if remainder data can fit in spine, make it hybrid */
+			/*
+			 if remainder data can fit in spine, make it hybrid
 			if (adjustedHybridSpineBytesAfterMove <= largestDesirableSpine) {
-				/* remainder data can fit in spine, last arrayoid pointer points to empty data section in spine */
+				 remainder data can fit in spine, last arrayoid pointer points to empty data section in spine 
 				layout = Hybrid;
 			} else {
-				/* remainder data will go into an arraylet, last arrayoid pointer points to it */
+				 remainder data will go into an arraylet, last arrayoid pointer points to it 
 				layout = Discontiguous;
 			}
+			*/
+			// printf("Setting arraylet layout to discontiguous. Must always be discontiguous!!!!\n");
+			layout = Discontiguous;
 		} else {
 			/* remainder is empty, so no arraylet allocated; last arrayoid pointer is set to MULL */
 			layout = Discontiguous;

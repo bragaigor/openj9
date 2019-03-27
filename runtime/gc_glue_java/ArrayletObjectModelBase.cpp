@@ -98,7 +98,8 @@ GC_ArrayletObjectModelBase::getSpineSizeWithoutHeader(ArrayLayout layout, UDATA 
 	if (InlineContiguous == layout) {
 		spineDataSize = dataSize; // All data in spine
 	} else if (Hybrid == layout) {
-		spineDataSize = (dataSize & (_omrVM->_arrayletLeafSize - 1)); // Last arraylet in spine.
+		// spineDataSize = (dataSize & (_omrVM->_arrayletLeafSize - 1)); // Last arraylet in spine.
+		spineDataSize = 0;
 	}
 
 	return spinePaddingSize + spineArrayoidSize + spineDataSize;

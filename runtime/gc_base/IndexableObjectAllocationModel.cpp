@@ -69,6 +69,7 @@ MM_IndexableObjectAllocationModel::initializeAllocateDescription(MM_EnvironmentB
 	case GC_ArrayletObjectModel::Discontiguous:
 		Assert_MM_true(0 < _numberOfArraylets);
 		/* non-empty discontiguous arrays require slow-path allocate */
+		printf("Total spine bytes is: %zu\n", (size_t)spineBytes);
 		if (isGCAllowed() || (0 == _numberOfIndexedFields)) {
 			/* _numberOfArraylets discontiguous leaves, all but last contains leaf size bytes */
 			layoutSizeInBytes = _dataSize;
@@ -264,17 +265,26 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 	if (NULL != spine) {
 		switch (_layout) {
 		case GC_ArrayletObjectModel::Discontiguous:
-			/* if last arraylet leaf is empty (contains 0 bytes) arrayoid pointer is set to NULL */
-			if (arrayoidIndex == (_numberOfArraylets - 1)) {
+			printf("if (arrayoidIndex == (_numberOfArraylets - 1)) this if statement will probable always be true, arrayoidIndex: %zu, _numberOfArraylets: %zu\n", (size_t)arrayoidIndex, (size_t)_numberOfArraylets);
+			/* All data from array are stored in the leaves */
+			Assert_MM_true(arrayoidIndex == _numberOfArraylets);
+			/*
+			 if last arraylet leaf is empty (contains 0 bytes) arrayoid pointer is set to NULL
+			 // This is the funny case where if the array has a length exactly mulyiple of region size
+			 // then the first if statement will be true. The else statement happens when the array
+			 // size is exactly one element less than a region size multiple.
+			if (arrayoidIndex == (_numberOfArraylets - 1)) { 
 				Assert_MM_true(0 == (_dataSize % arrayletLeafSize));
 				GC_SlotObject slotObject(env->getOmrVM(), &(arrayoidPtr[arrayoidIndex]));
 				slotObject.writeReferenceToSlot(NULL);
-			} else {
+			} else { 
 				Assert_MM_true(0 != (_dataSize % arrayletLeafSize));
 				Assert_MM_true(arrayoidIndex == _numberOfArraylets);
 			}
+			*/
 			break;
 
+		/* Unreachable */
 		case GC_ArrayletObjectModel::Hybrid:
 			/* last arrayoid points to end of arrayoid array in spine header (object-aligned if
 			 * required). (data size % leaf size) bytes of data are stored here (may be empty).

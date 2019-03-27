@@ -321,6 +321,7 @@ MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr
 	void* arrayletLeaveAddrs[arrayletLeafCount];
 	MM_Heap *heap = getHeap();
 	UDATA elementsSize = indexableObjectModel.getDataSizeInBytes((J9IndexableObject*)objectPtr);
+	UDATA bytesPerElement = elementsSize / indexableObjectModel.getSizeInElements((J9IndexableObject*)objectPtr);
         UDATA regionSize = heap->getHeapRegionManager()->getRegionSize();
 
 	GC_SlotObject *slotObject = NULL;
@@ -328,10 +329,12 @@ MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr
 
 	while (NULL != (slotObject = arrayletLeafIterator.nextLeafPointer())) {
 		void *currentLeaf = slotObject->readReferenceFromSlot();
-		if(count == (int)arrayletLeafCount - 1 && ((isDiscontiguous && elementsSize % regionSize == 0) || !isDiscontiguous)) {
-			printf("Leaf with index: %d is the end of spine, ignoring it.\n", count);
+		/*
+		if((count == (int)arrayletLeafCount - 1) && ((isDiscontiguous && elementsSize != (regionSize - bytesPerElement)) || !isDiscontiguous)) {
+			printf("Ignoring index: %d. Not part of arraylet leaves.\n", count);
 			continue;
 		}
+		*/
 		arrayletLeaveAddrs[count] = currentLeaf;
 		count++;
 	}
@@ -342,7 +345,7 @@ MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr
 	OMRMemCategory *category = omrmem_get_category(OMRMEM_CATEGORY_PORT_LIBRARY);
 
 	// Get heap and from there call an OMR API that will doble map everything
-	printf("\t\t>>>>>>>>>> total elements size: %zu, Region size: %zu, UDATA_MAX: %zu, count: %d, arraylet leaf size: %zu\n", elementsSize, regionSize, UDATA_MAX, count, arrayletLeafSize);
+	printf("\t>>>>>>>>>> elements count: %zu, bytes per element: %zu, total elements size: %zu, Region size: %zu, UDATA_MAX: %zu, count: %d, arraylet leaf size: %zu\n", (size_t)indexableObjectModel.getSizeInElements((J9IndexableObject*)objectPtr), (size_t)bytesPerElement, elementsSize, regionSize, UDATA_MAX, count, arrayletLeafSize);
 	result = heap->doubleMapArraylet(env, arrayletLeaveAddrs, count, arrayletLeafSize, elementsSize, 
 				&addrEntry.identifier,
 				pageSize,

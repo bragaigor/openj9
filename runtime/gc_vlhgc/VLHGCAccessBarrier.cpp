@@ -431,48 +431,78 @@ MM_VLHGCAccessBarrier::jniGetStringCritical(J9VMThread* vmThread, jstring str, j
 #endif
 	}
 
-	if (shouldCopy) {
-		jint length = J9VMJAVALANGSTRING_LENGTH(vmThread, stringObject);
-		UDATA sizeInBytes = length * sizeof(jchar);
-		data = (jchar*)functions->jniArrayAllocateMemoryFromThread(vmThread, sizeInBytes);
-		if (NULL == data) {
-			functions->setNativeOutOfMemoryError(vmThread, 0, 0);	// better error message here?
-		} else {
-			if (isCompressed) {
-				jint i;
-				
-				for (i = 0; i < length; i++) {
-					data[i] = (jchar)J9JAVAARRAYOFBYTE_LOAD(vmThread, (j9object_t)valueObject, i) & (jchar)0xFF;
-				}
-			} else {
-				GC_ArrayObjectModel* indexableObjectModel = &_extensions->indexableObjectModel;
-				
-				if (J9_ARE_ANY_BITS_SET(javaVM->runtimeFlags, J9_RUNTIME_STRING_BYTE_ARRAY)) {
-					// This API determines the stride based on the type of valueObject so in the [B case we must passin the length in bytes
-					indexableObjectModel->memcpyFromArray(data, valueObject, 0, (I_32)sizeInBytes);
-				} else {
-					indexableObjectModel->memcpyFromArray(data, valueObject, 0, length);
-				}
-			}
-			if (NULL != isCopy) {
-				*isCopy = JNI_TRUE;
-			}
-		}
-		vmThread->jniCriticalCopyCount += 1;
-	} else {
-		// acquire access and return a direct pointer
-		MM_JNICriticalRegion::enterCriticalRegion(vmThread, true);
-		Assert_MM_true(vmThread->publicFlags & J9_PUBLIC_FLAGS_VM_ACCESS);
-		data = (jchar*)_extensions->indexableObjectModel.getDataPointerForContiguous(valueObject);
+	bool successDoubleMap = false;
+        if(shouldCopy && _extensions->doDoubleMapping) {
+                printf("\t ###################### About to double map String JNI Critical with balanced!!\n");
 
-		if (NULL != isCopy) {
-			*isCopy = JNI_FALSE;
-		}
+                GC_HashTableIterator hashTableIterator(_extensions->getArrayletHashTable());
+                ArrayletTableEntry *slot = NULL;
+                bool found = false;
+                while(NULL != (slot = (ArrayletTableEntry *)hashTableIterator.nextSlot())) {
+                        if(slot->heapAddr == (void *)valueObject) {
+                                found = true;
+                                data = (jchar *)slot->contiguousAddr;
+                                break;
+                        }
+                }
+                printf("\t\tDid we find the slot we were looking for? %d, data: %p\n", found, data);
+		printf("stringObject address: %p, valueObject: %p\n", (void *)stringObject, (void*)valueObject);
+
+                if(data == NULL || !found) {
+                        printf("\t ###################### ERROR: Failed to double map String JNI critical!! Falling back to fall back path!!! \n");
+                        successDoubleMap = false;
+                } else {
+                        printf("\t ###################### Successfully double mapped String JNI Critical!!! \n");
+                        successDoubleMap = true;
+                }
+
+                _successDoubleMap = successDoubleMap;
+        }
+
+	if(!successDoubleMap) {
+		if (shouldCopy) {
+			jint length = J9VMJAVALANGSTRING_LENGTH(vmThread, stringObject);
+			UDATA sizeInBytes = length * sizeof(jchar);
+			data = (jchar*)functions->jniArrayAllocateMemoryFromThread(vmThread, sizeInBytes);
+			if (NULL == data) {
+				functions->setNativeOutOfMemoryError(vmThread, 0, 0);	// better error message here?
+			} else {
+				if (isCompressed) {
+					jint i;
+					
+					for (i = 0; i < length; i++) {
+						data[i] = (jchar)J9JAVAARRAYOFBYTE_LOAD(vmThread, (j9object_t)valueObject, i) & (jchar)0xFF;
+					}
+				} else {
+					GC_ArrayObjectModel* indexableObjectModel = &_extensions->indexableObjectModel;
+				
+					if (J9_ARE_ANY_BITS_SET(javaVM->runtimeFlags, J9_RUNTIME_STRING_BYTE_ARRAY)) {
+						// This API determines the stride based on the type of valueObject so in the [B case we must passin the length in bytes
+						indexableObjectModel->memcpyFromArray(data, valueObject, 0, (I_32)sizeInBytes);
+					} else {
+						indexableObjectModel->memcpyFromArray(data, valueObject, 0, length);
+					}
+				}
+				if (NULL != isCopy) {
+					*isCopy = JNI_TRUE;
+				}
+			}
+			vmThread->jniCriticalCopyCount += 1;
+		} else {
+			// acquire access and return a direct pointer
+			MM_JNICriticalRegion::enterCriticalRegion(vmThread, true);
+			Assert_MM_true(vmThread->publicFlags & J9_PUBLIC_FLAGS_VM_ACCESS);
+			data = (jchar*)_extensions->indexableObjectModel.getDataPointerForContiguous(valueObject);
+
+			if (NULL != isCopy) {
+				*isCopy = JNI_FALSE;
+			}
 #if defined(J9VM_GC_MODRON_COMPACTION) || defined(J9VM_GC_MODRON_SCAVENGER)
-		/* we need to increment this region's critical count so that we know not to compact it */
-		UDATA volatile *criticalCount = &(((MM_HeapRegionDescriptorVLHGC *)_heap->getHeapRegionManager()->regionDescriptorForAddress(valueObject))->_criticalRegionsInUse);
-		MM_AtomicOperations::add(criticalCount, 1);
+			/* we need to increment this region's critical count so that we know not to compact it */
+			UDATA volatile *criticalCount = &(((MM_HeapRegionDescriptorVLHGC *)_heap->getHeapRegionManager()->regionDescriptorForAddress(valueObject))->_criticalRegionsInUse);
+			MM_AtomicOperations::add(criticalCount, 1);
 #endif /* defined(J9VM_GC_MODRON_COMPACTION) || defined(J9VM_GC_MODRON_SCAVENGER)*/
+		}
 	}
 	VM_VMAccess::inlineExitVMToJNI(vmThread);
 	return data;
@@ -481,47 +511,51 @@ MM_VLHGCAccessBarrier::jniGetStringCritical(J9VMThread* vmThread, jstring str, j
 void
 MM_VLHGCAccessBarrier::jniReleaseStringCritical(J9VMThread* vmThread, jstring str, const jchar* elems)
 {
-	J9JavaVM *javaVM = vmThread->javaVM;
-	J9InternalVMFunctions *functions = javaVM->internalVMFunctions;
-	VM_VMAccess::inlineEnterVMFromJNI(vmThread);
+	if(!_successDoubleMap) {
+		J9JavaVM *javaVM = vmThread->javaVM;
+		J9InternalVMFunctions *functions = javaVM->internalVMFunctions;
+		VM_VMAccess::inlineEnterVMFromJNI(vmThread);
 
-	J9Object *stringObject = (J9Object*)J9_JNI_UNWRAP_REFERENCE(str);
-	J9IndexableObject *valueObject = (J9IndexableObject*)J9VMJAVALANGSTRING_VALUE(vmThread, stringObject);
-	bool shouldCopy = false;
-	if (IS_STRING_COMPRESSION_ENABLED_VM(javaVM)) {
-		shouldCopy = true;
-	}
-
-	bool alwaysCopyInCritical = (javaVM->runtimeFlags & J9_RUNTIME_ALWAYS_COPY_JNI_CRITICAL) == J9_RUNTIME_ALWAYS_COPY_JNI_CRITICAL;
-	if (alwaysCopyInCritical) {
-		shouldCopy = true;
-	} else {
-#if defined(J9VM_GC_ARRAYLETS)
-		/* an array having discontiguous extents is another reason to force the critical section to be a copy */
-		if (!_extensions->indexableObjectModel.isInlineContiguousArraylet(valueObject)) {
+		J9Object *stringObject = (J9Object*)J9_JNI_UNWRAP_REFERENCE(str);
+		J9IndexableObject *valueObject = (J9IndexableObject*)J9VMJAVALANGSTRING_VALUE(vmThread, stringObject);
+		bool shouldCopy = false;
+		if (IS_STRING_COMPRESSION_ENABLED_VM(javaVM)) {
 			shouldCopy = true;
 		}
-#endif
-	}
 
-	if (shouldCopy) {
-		// String data is not copied back
-		functions->jniArrayFreeMemoryFromThread(vmThread, (void*)elems);
-
-		if(vmThread->jniCriticalCopyCount > 0) {
-			vmThread->jniCriticalCopyCount -= 1;
+		bool alwaysCopyInCritical = (javaVM->runtimeFlags & J9_RUNTIME_ALWAYS_COPY_JNI_CRITICAL) == J9_RUNTIME_ALWAYS_COPY_JNI_CRITICAL;
+		if (alwaysCopyInCritical) {
+			shouldCopy = true;
 		} else {
-			Assert_MM_invalidJNICall();
+#if defined(J9VM_GC_ARRAYLETS)
+			/* an array having discontiguous extents is another reason to force the critical section to be a copy */
+			if (!_extensions->indexableObjectModel.isInlineContiguousArraylet(valueObject)) {
+				shouldCopy = true;
+			}
+#endif
 		}
-	} else {
-		// direct pointer, just drop access
+
+		if (shouldCopy) {
+			// String data is not copied back
+			functions->jniArrayFreeMemoryFromThread(vmThread, (void*)elems);
+
+			if(vmThread->jniCriticalCopyCount > 0) {
+				vmThread->jniCriticalCopyCount -= 1;
+			} else {
+				Assert_MM_invalidJNICall();
+			}
+		} else {
+			// direct pointer, just drop access
 #if defined(J9VM_GC_MODRON_COMPACTION) || defined(J9VM_GC_MODRON_SCAVENGER)
-		/* we need to decrement this region's critical count */
-		UDATA volatile *criticalCount = &(((MM_HeapRegionDescriptorVLHGC *)_heap->getHeapRegionManager()->regionDescriptorForAddress(valueObject))->_criticalRegionsInUse);
-		Assert_MM_true((*criticalCount) > 0);
-		MM_AtomicOperations::subtract(criticalCount, 1);
+			/* we need to decrement this region's critical count */
+			UDATA volatile *criticalCount = &(((MM_HeapRegionDescriptorVLHGC *)_heap->getHeapRegionManager()->regionDescriptorForAddress(valueObject))->_criticalRegionsInUse);
+			Assert_MM_true((*criticalCount) > 0);
+			MM_AtomicOperations::subtract(criticalCount, 1);
 #endif /* defined(J9VM_GC_MODRON_COMPACTION) || defined(J9VM_GC_MODRON_SCAVENGER)*/
-		MM_JNICriticalRegion::exitCriticalRegion(vmThread, true);
+			MM_JNICriticalRegion::exitCriticalRegion(vmThread, true);
+		}
+		VM_VMAccess::inlineExitVMToJNI(vmThread);
+	} else {
+		_successDoubleMap = false;
 	}
-	VM_VMAccess::inlineExitVMToJNI(vmThread);
 }

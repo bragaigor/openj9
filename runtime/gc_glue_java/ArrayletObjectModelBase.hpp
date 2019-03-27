@@ -180,11 +180,7 @@ public:
 	numArraylets(UDATA unadjustedDataSizeInBytes)
 	{
 		UDATA leafSize = _omrVM->_arrayletLeafSize;
-		/*
-		if(unadjustedDataSizeInBytes % leafSize == 0)
-			unadjustedDataSizeInBytes -= 1;
 
-		*/
 		UDATA numberOfArraylets = 1;
 		if (UDATA_MAX != leafSize) {
 			UDATA leafSizeMask = leafSize - 1;
@@ -204,6 +200,15 @@ public:
 			 * 	leaf count = (dataSizeInBytes >> leafLogSize) + 1
 			 */
 			numberOfArraylets = ((dataSizeInBytes >> leafLogSize) + (((dataSizeInBytes & leafSizeMask) + leafSizeMask) >> leafLogSize));
+
+			/*
+			if(unadjustedDataSizeInBytes >= leafSize && (unadjustedDataSizeInBytes % leafSize != 0)) {
+                        	numberOfArraylets += 1;
+			}
+			*/
+			if(numberOfArraylets > 1 && unadjustedDataSizeInBytes % leafSize == 0) {
+				numberOfArraylets -= 1;
+			}
 		}
 		return numberOfArraylets;
 	}
