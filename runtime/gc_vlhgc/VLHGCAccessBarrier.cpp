@@ -273,8 +273,9 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 #endif
 	}
 
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	bool successDoubleMap = false;
-        if(shouldCopy && _extensions->doDoubleMapping) {
+        if(shouldCopy && _extensions->indexableObjectModel.isDoubleMappingEnabled()) {
                 printf("\t ###################### About to double map JNI Critical with balanced!!\n");
 	
 		GC_HashTableIterator hashTableIterator(_extensions->getArrayletHashTable());
@@ -299,7 +300,9 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 
 		_successDoubleMap = successDoubleMap;
         }
-	if(!successDoubleMap) {
+	if(!successDoubleMap) 
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
+	{
 		if (shouldCopy) {
 			printf("Inside jniGetPrimitiveArrayCritical(). ******************* Now I'm about to copy element by element to make it look contiguous.\n");
 			GC_ArrayObjectModel* indexableObjectModel = &_extensions->indexableObjectModel;
@@ -355,10 +358,10 @@ MM_VLHGCAccessBarrier::jniReleasePrimitiveArrayCritical(J9VMThread* vmThread, ja
 		}
 #endif
 	}
-	if(shouldCopy && _extensions->doDoubleMapping && _successDoubleMap) {
-		printf("\t ###################### About to free double map JNI Critical in jniReleasePrimitiveArrayCritical(). No need to do anything\n");
-	}
-	if(!_successDoubleMap) {
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+	if(!_successDoubleMap) 
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
+	{
 		if(shouldCopy) {
 			printf("Inside jniReleasePrimitiveArrayCritical(). ******************* Now I'm about to release each element of the arraylets.\n");
 			if(JNI_ABORT != mode) {
@@ -396,7 +399,9 @@ MM_VLHGCAccessBarrier::jniReleasePrimitiveArrayCritical(J9VMThread* vmThread, ja
 			MM_JNICriticalRegion::exitCriticalRegion(vmThread, true);
 		}
 	}
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	_successDoubleMap = false;
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 	VM_VMAccess::inlineExitVMToJNI(vmThread);
 }
 

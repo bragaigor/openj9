@@ -167,10 +167,13 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 			extensions->nonDeterministicSweep = true;
 			continue;
 		}
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 		if(try_scan(&scan_start, "enableDoubleMapping")) {
-                        extensions->doDoubleMapping = true;
+			printf("\t####################################### Setting extensions->_enableDoubleMapping = true; !!!!!!!\n");
+			extensions->indexableObjectModel.setEnableDoubleMapping(true);
                         continue;
                 }
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 		if(try_scan(&scan_start, "disableNonDeterministicSweep")) {
 			extensions->nonDeterministicSweep = false;
 			continue;

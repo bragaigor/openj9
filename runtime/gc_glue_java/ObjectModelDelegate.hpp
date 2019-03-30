@@ -206,7 +206,9 @@ public:
 		/* get header + data size */
 		if (isIndexable(objectPtr)) {
 			dataSize = _arrayObjectModel->getSizeInBytesWithoutHeader((J9IndexableObject *)objectPtr);
+			// printf("\t first assignment dataSize = %zu\n", (size_t)dataSize);
 			dataSize += _arrayObjectModel->getHeaderSize((J9IndexableObject *)objectPtr);
+			// printf("\t Second assignment dataSize = %zu\n", (size_t)dataSize);
 		} else {
 			dataSize = _mixedObjectModel->getSizeInBytesWithoutHeader(objectPtr);
 			dataSize += _mixedObjectModel->getHeaderSize(objectPtr);

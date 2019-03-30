@@ -88,6 +88,7 @@ GC_ArrayletObjectModelBase::getSpineSizeWithoutHeader(ArrayLayout layout, UDATA 
 			/* not in-line, so there in an arrayoid */
 			spinePaddingSize = alignData ? (extensions->getObjectAlignmentInBytes() - sizeof(fj9object_t)) : 0;
 			spineArrayoidSize = numberArraylets * sizeof(fj9object_t);
+			// printf("\tnumberArraylets: %zu, sizeof(fj9object_t): %zu, spinePaddingSize: %zu, spineArrayoidSize: %zu\n", (size_t)numberArraylets, (size_t)sizeof(fj9object_t), (size_t)spinePaddingSize, (size_t)spineArrayoidSize);
 		}
 	}
 #else

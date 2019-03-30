@@ -1228,6 +1228,7 @@ private:
 		}
 	}
 
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	virtual void doDoubleMappedObjectSlot(ArrayletTableEntry *slotPtr, GC_HashTableIterator *hashTableIterator) {
 		printf("###################### Calling doDoubleMappedObjectSlot() from GlobalMarkingScheme.cpp!! \n");
                 MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCandidates += 1;
@@ -1240,6 +1241,7 @@ private:
                         hashTableIterator->removeSlot();
                 }
         }
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 	/**
 	 * @Clear the string table cache slot if the object is not marked

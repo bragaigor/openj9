@@ -30,9 +30,11 @@
 #include "j9nongenerated.h"
 #include "j9port.h"
 #include "util_api.h"
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 #include "ArrayletLeafIterator.hpp"
-#include "Heap.hpp"
-#include "HeapRegionManager.hpp"
+#include "Heap.hpp" // DELETE
+#include "HeapRegionManager.hpp" // DELETE
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 #include "EnvironmentBase.hpp"
 #include "Forge.hpp"
@@ -44,17 +46,6 @@
 #include "ReferenceChainWalkerMarkMap.hpp"
 #include "SublistPool.hpp"
 #include "Wildcard.hpp"
-#include <sys/mman.h>
-
-/*
-struct ArrayletTableEntry {
-	void *heapAddr; / Arraylet address in the heap 
-	void *contiguousAddr; / Arraylet address in contiguous region of memory 
-
-	static UDATA hash(void *key, void *userData) { return (UDATA)((ArrayletTableEntry*)key)->heapAddr; }
-	static UDATA equal(void *leftKey, void *rightKey, void *userData) { return ((ArrayletTableEntry*)leftKey)->heapAddr == ((ArrayletTableEntry*)rightKey)->heapAddr; }
-};
-*/
 
 MM_GCExtensions *
 MM_GCExtensions::newInstance(MM_EnvironmentBase *env)
@@ -103,14 +94,15 @@ MM_GCExtensions::initialize(MM_EnvironmentBase *env)
 		goto failed;
 	}
 
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	/* Initialize arraylet hash table */
 	/* Create hash table. Maps arraylet heap addresses to contiguous arraylet leaf addresses */
 	arrayletHashTable = hashTableNew(
                                    privateOmrPortLibrary,
                                    J9_GET_CALLSITE(),
-                                   2677, // 113,
+                                   2677,
                                    sizeof(ArrayletTableEntry),
-                                   sizeof(uint32_t *),
+                                   sizeof(UDATA),
                                    J9HASH_TABLE_ALLOW_SIZE_OPTIMIZATION,
                                    OMRMEM_CATEGORY_MM,
                                    ArrayletTableEntry::hash,
@@ -121,6 +113,7 @@ MM_GCExtensions::initialize(MM_EnvironmentBase *env)
 	if(!_arrayletLock.initialize(env, &lnrlOptions, "MM_GCExtensions:ArrayletTableEntry:lock")) {
 		goto failed;
 	}
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 #if defined(J9VM_GC_REALTIME)
 #if defined(J9VM_GC_HYBRID_ARRAYLETS)
@@ -307,8 +300,9 @@ MM_GCExtensions::computeDefaultMaxHeap(MM_EnvironmentBase *env)
 	memoryMax = MM_Math::roundToFloor(heapAlignment, memoryMax);
 }
 
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 void* 
-MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr, bool isDiscontiguous) 
+MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr) 
 {
 	printf(">>>\t>>>\tCalling double map from MM_GCExtensions\n");
 	J9JavaVM *javaVM = getJavaVM();
@@ -329,12 +323,6 @@ MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr
 
 	while (NULL != (slotObject = arrayletLeafIterator.nextLeafPointer())) {
 		void *currentLeaf = slotObject->readReferenceFromSlot();
-		/*
-		if((count == (int)arrayletLeafCount - 1) && ((isDiscontiguous && elementsSize != (regionSize - bytesPerElement)) || !isDiscontiguous)) {
-			printf("Ignoring index: %d. Not part of arraylet leaves.\n", count);
-			continue;
-		}
-		*/
 		arrayletLeaveAddrs[count] = currentLeaf;
 		count++;
 	}
@@ -412,3 +400,4 @@ MM_GCExtensions::freeDoubleMap(MM_EnvironmentBase* env, void* contiguousAddr, UD
 
 	return result != -1;
 }
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */

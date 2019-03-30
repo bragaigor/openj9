@@ -49,7 +49,9 @@
 #include "ObjectAccessBarrier.hpp"
 #include "ObjectAllocationInterface.hpp"
 #include "ObjectModel.hpp"
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 #include "ArrayletLeafIterator.hpp"
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 #if defined (J9VM_GC_REALTIME)
 #include "Scheduler.hpp"
@@ -498,7 +500,7 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 		objectPtr = OMR_GC_AllocateObject(vmThread->omrVMThread, &indexableOAM);
 		if (NULL != objectPtr) {
 			uintptr_t allocatedBytes = env->getExtensions()->objectModel.getConsumedSizeInBytesWithHeader(objectPtr);
-			Assert_MM_true(allocatedBytes == indexableOAM.getAllocateDescription()->getContiguousBytes());
+			Assert_MM_true(allocatedBytes == indexableOAM.getAllocateDescription()->getContiguousBytes()); 
 		}
 	}
 	
@@ -527,8 +529,10 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 		 */
 
 #if defined(LINUX)
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 		GC_ArrayletObjectModel::ArrayLayout layout = extensions->indexableObjectModel.getArrayLayout((J9IndexableObject*)objectPtr);
-		if(extensions->doDoubleMapping && extensions->isVLHGC() && (layout == GC_ArrayletObjectModel::Discontiguous || layout == GC_ArrayletObjectModel::Hybrid)) {
+		if(extensions->indexableObjectModel.isDoubleMappingEnabled() && extensions->isVLHGC() && layout != GC_ArrayletObjectModel::InlineContiguous) {
+			Assert_MM_true(layout == GC_ArrayletObjectModel::Discontiguous);
 			printf(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
 			if(layout == GC_ArrayletObjectModel::Discontiguous) {
                         	printf("^^^^^^^^^^^^^^^^^^^^^^^^^^^|||||||||||||||||||||^^^^^^^^^^^^^^^^^^^^^^^^^^^ layout is Discontiguous!!!\n");
@@ -541,12 +545,10 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 			GC_ArrayletLeafIterator arrayletLeafIterator(javaVM, (J9IndexableObject*)objectPtr);
 			UDATA arrayletLeafCount = arrayletLeafIterator.getNumLeafs();
 
-			bool isDiscontiguous = layout == GC_ArrayletObjectModel::Discontiguous ? true : false;
-
 			void *contiguousAddr = NULL;
 			if(arrayletLeafCount > 0) {
 				printf("How many arraylet leaves are there? Answer: %zu\n", arrayletLeafCount);
-				contiguousAddr = extensions->doubleMapArraylets(env, objectPtr, isDiscontiguous);
+				contiguousAddr = extensions->doubleMapArraylets(env, objectPtr);
 				if(contiguousAddr == NULL) {
 					printf("<<<<<<<<<<<< Double mapping FAILED!!! <<<<<<<<<<<<<\n");
 					objectPtr = NULL;
@@ -557,7 +559,8 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 				printf("arrayletLeafCount is zero. What should I do in this case? Ignore? \n");
 			}
 		}
-#endif
+#endif /* LINUX */
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 		if (OMR_GC_ALLOCATE_OBJECT_INSTRUMENTABLE == (OMR_GC_ALLOCATE_OBJECT_INSTRUMENTABLE & allocateFlags)) {
 			TRIGGER_J9HOOK_VM_OBJECT_ALLOCATE_INSTRUMENTABLE(
