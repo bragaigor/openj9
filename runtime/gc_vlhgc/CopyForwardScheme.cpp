@@ -4057,7 +4057,6 @@ private:
 		printf("Entry values. Key: %p, val: %p, dataSize: %zu\n", entry->heapAddr, entry->contiguousAddr, (size_t)entry->dataSize);
 		J9Object *objectPtr = (J9Object *)slotPtr->heapAddr;
 		MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCandidates += 1;
-		printf("About to call _copyForwardScheme->isLiveObject(objectPtr) objectPtr has addr: %p\n", (void*)objectPtr);
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ScavengerForwardedHeader forwardedHeader(objectPtr);

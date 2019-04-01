@@ -867,7 +867,6 @@ MM_RootScanner::scanJVMTIObjectTagTables(MM_EnvironmentBase *env)
 void 
 MM_RootScanner::scanDoubleMappedObjects(MM_EnvironmentBase *env)
 {
-	printf("Calling scanDoubleMappedObjects() from RootScanner()\n");
 	if(_singleThread || J9MODRON_HANDLE_NEXT_WORK_UNIT(env)) {
 		printf("Inside if(_singleThread || J9MODRON_HANDLE_NEXT_WORK_UNIT(env)){}\n");
 		J9HashTable* arrayletHashTable = _extensions->getArrayletHashTable();
