@@ -91,11 +91,9 @@ protected:
 #endif /* J9VM_GC_MODRON_SCAVENGER */	 	
 	bool _classDataAsRoots; /**< Should all classes (and class loaders) be treated as roots. Default true, should set to false when class unloading */
 	bool _includeJVMTIObjectTagTables; /**< Should the iterator include the JVMTIObjectTagTables. Default true, should set to false when doing JVMTI object walks */
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	bool _includeDoubleMap; /**< Should the GC policy be balanced and compressed refs (explicitly enabled via command line parameter). Default is false. */
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 	bool _trackVisibleStackFrameDepth; /**< Should the stack walker be told to track the visible frame depth. Default false, should set to true when doing JVMTI walks that report stack slots */
 
 	U_64 _entityStartScanTime; /**< The start time of the scan of the current scanning entity, or 0 if no entity is being scanned.  Defaults to 0. */
@@ -309,11 +307,9 @@ public:
 #endif /* J9VM_GC_MODRON_SCAVENGER */
 		, _classDataAsRoots(true)
 		, _includeJVMTIObjectTagTables(true)
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 		, _includeDoubleMap(_extensions->indexableObjectModel.isDoubleMappingEnabled())
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 		, _trackVisibleStackFrameDepth(false)
 		, _entityStartScanTime(0)
 		, _entityIncrementStartTime(0)
@@ -377,13 +373,11 @@ public:
 	}
 #endif /* J9VM_OPT_JVMTI */
 
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	void setIncludeDoubleMap(bool includeDoubleMap) {
 		_includeDoubleMap = includeDoubleMap;
 	}
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 
 	/** Set whether the iterator will scan the JVMTIObjectTagTables (if applicable to the scan type) */
 	void setTrackVisibleStackFrameDepth(bool trackVisibleStackFrameDepth) {
@@ -452,11 +446,9 @@ public:
 	void scanJVMTIObjectTagTables(MM_EnvironmentBase *env);
 #endif /* J9VM_OPT_JVMTI */
 
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	void scanDoubleMappedObjects(MM_EnvironmentBase *env);
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 
 	virtual void doClassLoader(J9ClassLoader *classLoader);
 
@@ -511,11 +503,9 @@ public:
 	virtual void doStringCacheTableSlot(J9Object **slotPtr);
 	virtual void doVMClassSlot(J9Class **slotPtr, GC_VMClassSlotIterator *vmClassSlotIterator);
 	virtual void doVMThreadSlot(J9Object **slotPtr, GC_VMThreadIterator *vmThreadIterator);
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	virtual void doDoubleMappedObjectSlot(ArrayletTableEntry *slotPtr, GC_HashTableIterator *hashTableIterator);
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 	
 	/**
 	 * Called for each object stack slot. Subclasses may override.

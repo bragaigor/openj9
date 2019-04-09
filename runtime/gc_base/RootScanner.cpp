@@ -220,7 +220,6 @@ MM_RootScanner::doStringTableSlot(J9Object **slotPtr, GC_StringTableIterator *st
 	doSlot(slotPtr);
 }
 
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 /**
  * @todo Provide function documentation
@@ -231,7 +230,6 @@ MM_RootScanner::doDoubleMappedObjectSlot(ArrayletTableEntry *slotPtr, GC_HashTab
 	doSlot((J9Object **)slotPtr);
 }
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 
 /**
  * @Perform operation on the given string cache table slot.
@@ -866,7 +864,6 @@ MM_RootScanner::scanJVMTIObjectTagTables(MM_EnvironmentBase *env)
 }
 #endif /* J9VM_OPT_JVMTI */
 
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 void 
 MM_RootScanner::scanDoubleMappedObjects(MM_EnvironmentBase *env)
@@ -885,7 +882,6 @@ MM_RootScanner::scanDoubleMappedObjects(MM_EnvironmentBase *env)
 	}
 }
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 
 /**
  * Scan all root set references from the VM into the heap.
@@ -1012,13 +1008,11 @@ MM_RootScanner::scanClearable(MM_EnvironmentBase *env)
 	}
 #endif /* J9VM_OPT_JVMTI */
 
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	if (_includeDoubleMap) {
 		scanDoubleMappedObjects(env);
 	}
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 }
 
 /**
@@ -1068,13 +1062,11 @@ MM_RootScanner::scanAllSlots(MM_EnvironmentBase *env)
 	}
 #endif /* J9VM_OPT_JVMTI */
 
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
         if (_includeDoubleMap) {
                 scanDoubleMappedObjects(env);
         }
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-#endif /* LINUX */
 
 	scanOwnableSynchronizerObjects(env);
 }

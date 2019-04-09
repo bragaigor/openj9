@@ -526,7 +526,6 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 		 * means the hook could write back a different value to the variable, it must be a valid lvalue (ie: not cast).
 		 */
 
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 		GC_ArrayletObjectModel::ArrayLayout layout = extensions->indexableObjectModel.getArrayLayout((J9IndexableObject*)objectPtr);
 		if (extensions->indexableObjectModel.isDoubleMappingEnabled() && extensions->isVLHGC() && (layout != GC_ArrayletObjectModel::InlineContiguous)) {
@@ -545,7 +544,6 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 				}
 			}
 		}
-#endif /* LINUX */
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 		if (OMR_GC_ALLOCATE_OBJECT_INSTRUMENTABLE == (OMR_GC_ALLOCATE_OBJECT_INSTRUMENTABLE & allocateFlags)) {
@@ -598,10 +596,8 @@ J9AllocateIndexableObject(J9VMThread *vmThread, J9Class *clazz, uint32_t numberO
 #endif /* defined(J9VM_GC_REALTIME) */
 		}
 	} else {
-#if defined(LINUX)
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 failDoubleMap:
-#endif /* LINUX */
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 		/* we're going to return NULL, trace this */
 		PORT_ACCESS_FROM_ENVIRONMENT(env);
