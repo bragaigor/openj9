@@ -302,8 +302,8 @@ MM_GCExtensions::computeDefaultMaxHeap(MM_EnvironmentBase *env)
 }
 
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
-#if defined(LINUX) || defined(WIN32) || defined(WINDOWS)
-/* Double map is only supported on LINUX and WINDOWS for now */
+#if defined(LINUX) || defined(WIN32) || defined(WINDOWS) || defined(AIXPPC)
+/* Double map is only supported on LINUX, WINDOWS, and AIX for now */
 #else
 #error "Platform not supported by Double Map API"
 #endif /* !LINUX */
