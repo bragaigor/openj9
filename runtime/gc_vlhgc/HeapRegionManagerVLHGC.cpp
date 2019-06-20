@@ -65,6 +65,7 @@ MM_HeapRegionManagerVLHGC::tearDown(MM_EnvironmentBase *env)
 bool
 MM_HeapRegionManagerVLHGC::enableRegionsInTable(MM_EnvironmentBase *env, MM_MemoryHandle *handle)
 {
+	printf("Inside MM_HeapRegionManagerVLHGC::enableRegionsInTable() from OpenJ9 side. \n");
 	bool result = true;
 	MM_GCExtensionsBase *extensions= env->getExtensions();
 	MM_MemoryManager *memoryManager = extensions->memoryManager;
@@ -113,10 +114,14 @@ MM_HeapRegionManagerVLHGC::enableRegionsInTable(MM_EnvironmentBase *env, MM_Memo
 					thisNodeSize = (UDATA)topOfExtent - heapAddress;
 				}
 				if (hasPhysicalNUMASupport) {
+					printf("\t\tAbout to call memoryManager->setNumaAffinity() from OpenJ9 side. \n");
 					result = memoryManager->setNumaAffinity(handle, nodeToBind, (void*)heapAddress, thisNodeSize);
+					printf("\t\tmemoryManager->setNumaAffinity() returned: result = %d. \n", (int)result);
 					if (result) {
 						/* also set the memory affinity for the corresponding CardTable extent */
+						printf("\t\tAbout to call cardTable->setNumaAffinityCorrespondingToHeapRange() from OpenJ9 side. \n");
 						result = cardTable->setNumaAffinityCorrespondingToHeapRange(env, nodeToBind, (void*)heapAddress, topOfExtent);
+						printf("\t\tcardTable->setNumaAffinityCorrespondingToHeapRange() returned: result = %d. \n", (int)result);
 					}
 				} else {
 					result = true;
