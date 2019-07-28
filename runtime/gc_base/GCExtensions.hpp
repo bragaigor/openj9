@@ -80,6 +80,7 @@ class MM_IdleGCManager;
 struct ArrayletTableEntry {
 	void *heapAddr; /* Arraylet address in the heap */
 	void *contiguousAddr; /* Arraylet address in contiguous region of memory */
+	uintptr_t *arrayletLeaveAddrs; /* Arraylet leaves' addresses */
 	UDATA dataSize; /* Number of regions arraylet leaves occupy times region size */
 	UDATA actualSize; /* Actual arraylet size in bytes */
 	J9PortVmemIdentifier identifier;
@@ -219,7 +220,7 @@ public:
 	static MM_GCExtensions* newInstance(MM_EnvironmentBase* env);
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	virtual void* doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr);
-	virtual bool freeDoubleMap(MM_EnvironmentBase* env, void* contiguousAddr, UDATA dataSize, struct J9PortVmemIdentifier *identifier);
+	virtual bool freeDoubleMap(MM_EnvironmentBase* env, void* contiguousAddr, UDATA dataSize, struct J9PortVmemIdentifier *identifier, uintptr_t *arrayletLeaveAddrs);
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 	virtual void kill(MM_EnvironmentBase* env);
 

@@ -302,10 +302,11 @@ MM_GCExtensions::computeDefaultMaxHeap(MM_EnvironmentBase *env)
 }
 
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
-#if !defined(LINUX)
-/* Double map is only supported on LINUX for now */
+#if defined(LINUX) || defined(WIN32) || defined(WINDOWS)
+/* Double map is only supported on LINUX and WINDOWS for now */
+#else
 #error "Platform not supported by Double Map API"
-#endif /* !LINUX */
+#endif /* defined(LINUX) || defined(WIN32) || defined(WINDOWS) */
 void* 
 MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr) 
 {
@@ -317,15 +318,18 @@ MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr
 	UDATA arrayletLeafCount = arrayletLeafIterator.getNumLeafs();
 	MM_Heap *heap = getHeap();
 	void* result = NULL;
-	void* arrayletLeaveAddrs[arrayletLeafCount];
+	uintptr_t *arrayletLeaveAddrs = (uintptr_t *)malloc(arrayletLeafCount * sizeof(uintptr_t));
+	if(arrayletLeaveAddrs == NULL) {
+		return NULL;
+	}
 	UDATA elementsSize = indexableObjectModel.getDataSizeInBytes((J9IndexableObject*)objectPtr);
 
 	GC_SlotObject *slotObject = NULL;
-	int count = 0;
+	size_t count = 0;
 
 	while (NULL != (slotObject = arrayletLeafIterator.nextLeafPointer())) {
 		void *currentLeaf = slotObject->readReferenceFromSlot();
-		arrayletLeaveAddrs[count] = currentLeaf;
+		arrayletLeaveAddrs[count] = (uintptr_t)currentLeaf;
 		count++;
 	}
 
@@ -346,6 +350,7 @@ MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr
 	addrEntry.contiguousAddr = result;
 	addrEntry.dataSize = addrEntry.identifier.size; /* When arraylet storage is updated this should be larger than actualSize */
 	addrEntry.actualSize = elementsSize;
+	addrEntry.arrayletLeaveAddrs = arrayletLeaveAddrs;
 
 	void *findObject = hashTableFind(arrayletHashTable, &addrEntry);
 
@@ -365,12 +370,14 @@ MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr
 }
 
 bool 
-MM_GCExtensions::freeDoubleMap(MM_EnvironmentBase* env, void* contiguousAddr, UDATA dataSize, struct J9PortVmemIdentifier *identifier) 
+MM_GCExtensions::freeDoubleMap(MM_EnvironmentBase* env, void* contiguousAddr, UDATA dataSize, struct J9PortVmemIdentifier *identifier, uintptr_t *arrayletLeaveAddrs) 
 {
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
 	void *contiguousMem = contiguousAddr;
 
 	int result = j9vmem_free_memory(contiguousMem, dataSize, identifier);
+
+	free((void *)arrayletLeaveAddrs);
 
 	assert(result == 0);
 
