@@ -297,11 +297,11 @@ MM_GCExtensions::computeDefaultMaxHeap(MM_EnvironmentBase *env)
 }
 
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
-#if defined(LINUX) || defined(WIN32) || defined(WINDOWS)
+#if defined(LINUX) || defined(WIN32) || defined(WINDOWS) || defined(OSX)
 /* Double map is only supported on LINUX and WINDOWS for now */
 #else
 #error "Platform not supported by Double Map API"
-#endif /* defined(LINUX) || defined(WIN32) || defined(WINDOWS) */
+#endif /* defined(LINUX) || defined(WIN32) || defined(WINDOWS) || defined(OSX) */
 void* 
 MM_GCExtensions::doubleMapArraylets(MM_EnvironmentBase* env, J9Object *objectPtr) 
 {
