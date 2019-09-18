@@ -1234,7 +1234,7 @@ private:
                 MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCandidates += 1;
                 if (!_markingScheme->isMarked((J9Object *)slotPtr->heapAddr)) {
                         MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCleared += 1;
-			_extensions->freeDoubleMap(_env, slotPtr->contiguousAddr, slotPtr->dataSize, &slotPtr->identifier);
+			_extensions->freeDoubleMap(_env, slotPtr->contiguousAddr, slotPtr->dataSize, &slotPtr->identifier, slotPtr->arrayletLeaveAddrs);
                         hashTableIterator->removeSlot();
                 }
         }

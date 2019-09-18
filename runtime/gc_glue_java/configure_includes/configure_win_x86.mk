@@ -34,6 +34,7 @@ ifeq (win_x86-64_cmprssptrs, $(SPEC))
 		--enable-OMR_ENV_DATA64 \
 		--enable-OMR_ENV_LITTLE_ENDIAN \
 		--enable-OMR_GC_COMPRESSED_POINTERS \
+		--enable-OMR_GC_DOUBLE_MAP_ARRAYLETS \
 		--enable-OMR_GC_TLH_PREFETCH_FTA \
 		--enable-OMR_GC_CONCURRENT_SCAVENGER \
 		--enable-OMR_INTERP_COMPRESSED_OBJECT_HEADER \

@@ -3890,7 +3890,7 @@ private:
 			if (objectPtr == NULL) {
 				Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
                                 MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._doubleMappedArrayletsCleared += 1;
-				_extensions->freeDoubleMap(_env, slotPtr->contiguousAddr, slotPtr->dataSize, &slotPtr->identifier);
+				_extensions->freeDoubleMap(_env, slotPtr->contiguousAddr, slotPtr->dataSize, &slotPtr->identifier, slotPtr->arrayletLeaveAddrs);
                         	hashTableIterator->removeSlot();
 			} else {
 				slotPtr->heapAddr = (void *)objectPtr;
