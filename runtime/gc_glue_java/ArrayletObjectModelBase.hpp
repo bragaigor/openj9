@@ -134,8 +134,10 @@ public:
 	{
 		if (compressObjectReferences()) {
 			((J9IndexableObjectContiguousCompressed *)arrayPtr)->size = (U_32)size;
+			((J9IndexableObjectContiguousCompressed *)arrayPtr)->dataAddr = 0xDEADBEEFDEADBEEF;
 		} else {
 			((J9IndexableObjectContiguousFull *)arrayPtr)->size = (U_32)size;
+			((J9IndexableObjectContiguousFull *)arrayPtr)->dataAddr = 0xDEADBEEFDEADBEEF;
 		}
 	}
 
@@ -174,9 +176,11 @@ public:
 		if (compressObjectReferences()) {
 			((J9IndexableObjectDiscontiguousCompressed *)arrayPtr)->mustBeZero = 0;
 			((J9IndexableObjectDiscontiguousCompressed *)arrayPtr)->size = (U_32)size;
+			((J9IndexableObjectDiscontiguousCompressed *)arrayPtr)->dataAddr = 0xDEADBEEFDEADDEAD;
 		} else {
 			((J9IndexableObjectDiscontiguousFull *)arrayPtr)->mustBeZero = 0;
 			((J9IndexableObjectDiscontiguousFull *)arrayPtr)->size = (U_32)size;
+			((J9IndexableObjectDiscontiguousFull *)arrayPtr)->dataAddr = 0xDEADBEEFDEADDEAD;
 		}
 	}
 

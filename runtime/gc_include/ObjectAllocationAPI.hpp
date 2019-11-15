@@ -142,6 +142,7 @@ private:
 					J9IndexableObjectContiguousCompressed *header = (J9IndexableObjectContiguousCompressed*)objectHeader;
 					header->clazz = (U_32)(UDATA)arrayClass;
 					header->size = size;
+					header->dataAddr = 0xCEEFBEEFBEEFBEEF;
 					if (initializeSlots) {
 						memset(header + 1, 0, dataSize);
 					}
@@ -149,6 +150,7 @@ private:
 					J9IndexableObjectContiguousFull *header = (J9IndexableObjectContiguousFull*)objectHeader;
 					header->clazz = (UDATA)arrayClass;
 					header->size = size;
+					header->dataAddr = 0xCEEFBEEFBEEFBEEF;
 					if (initializeSlots) {
 						memset(header + 1, 0, dataSize);
 					}
@@ -160,7 +162,8 @@ private:
 			}
 		} else {
 			/* Zero-length array is discontiguous - assume minimum object size */
-			UDATA allocateSize = J9_GC_MINIMUM_OBJECT_SIZE;
+			// UDATA allocateSize = J9_GC_MINIMUM_OBJECT_SIZE;
+			UDATA allocateSize = J9_GC_MINIMUM_INDEXABLE_OBJECT_SIZE;
 
 			/* Allocate the memory */
 			j9object_t objectHeader = NULL;
@@ -221,11 +224,13 @@ private:
 				header->clazz = (U_32)(UDATA)arrayClass;
 				header->mustBeZero = 0;
 				header->size = 0;
+				header->dataAddr = 0xB100D5BEEF5BEEF5;
 			} else {
 				J9IndexableObjectDiscontiguousFull *header = (J9IndexableObjectDiscontiguousFull*)objectHeader;
 				header->clazz = (UDATA)arrayClass;
 				header->mustBeZero = 0;
 				header->size = 0;
+				header->dataAddr = 0xB100D5BEEF5BEEF5;
 			}
 			if (memoryBarrier) {
 				VM_AtomicSupport::writeBarrier();
