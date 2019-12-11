@@ -308,7 +308,7 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 					printf("\tDouble map jniGetPrimitiveArrayCritical() FAILED therefore we'll copy index by index!!!\n");
 					copyArrayCritical(vmThread, indexableObjectModel, functions, &data, arrayObject, isCopy);
 				} else {
-					printf("\tDouble map jniGetPrimitiveArrayCritical() was indeed SUCCESSFUL!! data pointer is: %p\n", );
+					printf("\tDouble map jniGetPrimitiveArrayCritical() was indeed SUCCESSFUL!! data pointer is: %p\n", (void *)data);
 				}
 			/* Corner case where there's only one arraylet leaf */
 			} else if (indexableObjectModel->isArrayletDataContiguous(arrayObject)) {

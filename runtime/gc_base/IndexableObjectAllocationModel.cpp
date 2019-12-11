@@ -365,7 +365,7 @@ MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J
 	UDATA pageSize = j9mmap_get_region_granularity(NULL);
 
 	printf("\tInside MM_IndexableObjectAllocationModel::doubleMapArraylets() OpenJ9 about to call double map\n");
-	printf("\tpageSize: %zu, number of leaves: %zu, arrayletLeafSize: %zu, _dataSize: %zu\n");
+	printf("\tpageSize: %zu, number of leaves: %zu, arrayletLeafSize: %zu, _dataSize: %zu\n", (size_t)pageSize, (size_t)count, (size_t)arrayletLeafSize, _dataSize);
 
 	/* Get heap and from there call an OMR API that will doble map everything */
 	result = heap->doubleMapArraylet(env, arrayletLeaveAddrs, count, arrayletLeafSize, _dataSize,
