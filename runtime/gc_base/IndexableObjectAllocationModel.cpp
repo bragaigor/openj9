@@ -364,10 +364,19 @@ MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J
 	/* gets pagesize  or j9vmem_supported_page_sizes()[0]? */
 	UDATA pageSize = j9mmap_get_region_granularity(NULL);
 
+	printf("\tInside MM_IndexableObjectAllocationModel::doubleMapArraylets() OpenJ9 about to call double map\n");
+	printf("\tpageSize: %zu, number of leaves: %zu, arrayletLeafSize: %zu, _dataSize: %zu\n");
+
 	/* Get heap and from there call an OMR API that will doble map everything */
 	result = heap->doubleMapArraylet(env, arrayletLeaveAddrs, count, arrayletLeafSize, _dataSize,
 				&firstLeafRegionDescriptor->_arrayletDoublemapID,
 				pageSize);
+
+	if (NULL == result) {
+		printf("\tOpenJ9 doubleMapArraylets() Double Map FAILED!!!!!!\n");
+	} else {
+		printf("\tOpenJ9 doubleMapArraylets() Double Map was indeed SUCCESSFUL! Result: %p\n", (void *)result);
+	}
 
 	if (arrayletLeafCount > ARRAYLET_ALLOC_THRESHOLD) {
 		env->getForge()->free((void *)arrayletLeaveAddrs);

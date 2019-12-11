@@ -297,6 +297,7 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 		MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(vmThread);
 		if (indexableObjectModel->isDoubleMappingEnabled()) {
 			if (indexableObjectModel->isArrayletDataDiscontiguous(arrayObject)) {
+				printf("Inside jniGetPrimitiveArrayCritical() about to retrieve double mapped region...\n");
 				GC_SlotObject objectSlot(env->getOmrVM(), &indexableObjectModel->getArrayoidPointer(arrayObject)[0]);
 				J9Object *firstLeafSlot = objectSlot.readReferenceFromSlot();
 				MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)_extensions->heapRegionManager->tableDescriptorForAddress(firstLeafSlot);
@@ -304,7 +305,10 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 
 				if (NULL == data) {
 					/* Doublemap failed, but we still need to continue execution; therefore fallback to previous approach */
+					printf("\tDouble map jniGetPrimitiveArrayCritical() FAILED therefore we'll copy index by index!!!\n");
 					copyArrayCritical(vmThread, indexableObjectModel, functions, &data, arrayObject, isCopy);
+				} else {
+					printf("\tDouble map jniGetPrimitiveArrayCritical() was indeed SUCCESSFUL!! data pointer is: %p\n", );
 				}
 			/* Corner case where there's only one arraylet leaf */
 			} else if (indexableObjectModel->isArrayletDataContiguous(arrayObject)) {
@@ -386,8 +390,11 @@ MM_VLHGCAccessBarrier::jniReleasePrimitiveArrayCritical(J9VMThread* vmThread, ja
 				MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)_extensions->heapRegionManager->tableDescriptorForAddress(firstLeafSlot);
 
 				if (NULL == firstLeafRegionDescriptor->_arrayletDoublemapID.address) {
+					printf("\tDouble map jniReleasePrimitiveArrayCritical() FAILED therefore we'll copy index by index!!!\n");
 					/* Doublemap failed, but we still need to continue execution; therefore fallback to previous approach */
 					copyBackArrayCritical(vmThread, indexableObjectModel, functions, elems, &arrayObject, mode);
+				} else {
+					printf("\tDouble map failed at jniReleasePrimitiveArrayCritical() SUCCEDED, nothing to do.\n");
 				}
 			} else if (indexableObjectModel->isArrayletDataContiguous(arrayObject)) {
 				/**

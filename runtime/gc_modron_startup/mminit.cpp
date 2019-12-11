@@ -320,12 +320,12 @@ j9gc_initialize_heap(J9JavaVM *vm, IDATA *memoryParameterTable, UDATA heapBytesR
 #endif /* J9VM_GC_BATCH_CLEAR_TLH */
 
 	extensions->heap = extensions->configuration->createHeap(&env, heapBytesRequested);
-#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+/*#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
 		printf("Heap created at: %p. Going to sleep some more... ZzZzZzZzZzZzZzZz \n", (void *)extensions->heap->getHeapBase());
 		j9thread_sleep(300000); // 5 min
 	}
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
+#endif * J9VM_GC_ENABLE_DOUBLE_MAP */
 
 	if (NULL == extensions->heap) {
 		const char *splitFailure = NULL;
