@@ -319,6 +319,18 @@ j9gc_initialize_heap(J9JavaVM *vm, IDATA *memoryParameterTable, UDATA heapBytesR
 	vm->initializeSlotsOnTLHAllocate = (extensions->batchClearTLH == 0) ? 1 : 0;
 #endif /* J9VM_GC_BATCH_CLEAR_TLH */
 
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+	/* Disable double map if requested page sizes used is equal to huge pages.
+	 * Currently double map does is not supported when huge pages are used.
+	 */
+	OMRPORT_ACCESS_FROM_J9PORT(privatePortLibrary);
+	if (extensions->requestedPageSize > omrvmem_supported_page_sizes()[0]) {
+		if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
+			extensions->indexableObjectModel.setEnableDoubleMapping(false);
+		}
+	}
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
+
 	extensions->heap = extensions->configuration->createHeap(&env, heapBytesRequested);
 
 	if (NULL == extensions->heap) {
