@@ -130,11 +130,11 @@ public:
 	 * when double map is enabled), double maps the arraylet leaves to a contiguous
 	 * region outside the heap, making a discontiguous arraylet look contiguous.
 	 * Currently double map is enabled by manually passing command line option
-	 * XXgc:enableDoubleMapping; however, if the system supports huge pages and
+	 * -XXgc:enableDoubleMapping; however, if the system supports huge pages and
 	 * double map gets manually enabled, then double map will be disabled. That's
-	 * because double map cannot support huge pages yet. If one still wants to
+	 * because double map does not support huge pages yet. If one still wants to
 	 * enable double map in such systems, one must manually force the application
-	 * to use the default page size such as: -Xlp:objectheap:pagesize=4K
+	 * to use normal page size (e.g. 4K size)
 	 *
 	 * @param env thread GC Environment
 	 * @param objectPtr indexable object spine

@@ -321,7 +321,7 @@ j9gc_initialize_heap(J9JavaVM *vm, IDATA *memoryParameterTable, UDATA heapBytesR
 
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	/* Disable double map if requested page sizes used is equal to huge pages.
-	 * Currently double map does is not supported when huge pages are used.
+	 * Currently double map is not supported when huge pages are used.
 	 */
 	OMRPORT_ACCESS_FROM_J9PORT(privatePortLibrary);
 	if (extensions->requestedPageSize > omrvmem_supported_page_sizes()[0]) {
@@ -3109,6 +3109,7 @@ triggerGCInitialized(J9VMThread* vmThread)
 
 	UDATA regionSize = extensions->getHeap()->getHeapRegionManager()->getRegionSize();
 	UDATA regionCount = extensions->getHeap()->getHeapRegionManager()->getTableRegionCount();
+	uint8_t isDoubleMappingEnabled = extensions->indexableObjectModel.isDoubleMappingEnabled() ? 1 : 0;
 
 	UDATA arrayletLeafSize = 0;
 	arrayletLeafSize = vm->arrayletLeafSize;
@@ -3140,6 +3141,7 @@ triggerGCInitialized(J9VMThread* vmThread)
 		numaNodes,
 		regionSize,
 		regionCount,
+		isDoubleMappingEnabled,
 		arrayletLeafSize);
 
 	return J9VMDLLMAIN_OK;
