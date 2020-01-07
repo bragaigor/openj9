@@ -326,7 +326,8 @@ j9gc_initialize_heap(J9JavaVM *vm, IDATA *memoryParameterTable, UDATA heapBytesR
 	OMRPORT_ACCESS_FROM_J9PORT(privatePortLibrary);
 	if (extensions->requestedPageSize > omrvmem_supported_page_sizes()[0]) {
 		if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
-			extensions->indexableObjectModel.setEnableDoubleMapping(false);
+			// extensions->indexableObjectModel.setEnableDoubleMapping(false);
+			extensions->indexableObjectModel.setEnableHugePages(true);
 		}
 	}
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */

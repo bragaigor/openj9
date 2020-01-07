@@ -46,6 +46,7 @@ private:
 #endif /* defined(OMR_GC_COMPRESSED_POINTERS) && defined(OMR_GC_FULL_POINTERS) */
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	bool _enableDoubleMapping; /** Allows arraylets to be double mapped */
+	bool _enableHugePages; /* Allows double mapping to be created with huge pages */
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 protected:
 	OMR_VM *_omrVM; 	/**< used so that we can pull the arrayletLeafSize and arrayletLeafLogSize for arraylet sizing calculations */
@@ -160,6 +161,29 @@ public:
 	isDoubleMappingEnabled()
 	{
 		return _enableDoubleMapping;
+	}
+
+	/**
+	 * Sets enable huge pages
+	 *
+	 * @param enableHugePages
+	 */
+	MMINLINE void
+	setEnableHugePages(bool enableHugePages)
+	{
+		_enableHugePages = enableHugePages;
+	}
+
+	/**
+	 * Returns enable huge pages. If system supports huge pages and requestedPageSize
+	 * correponds top the system huge page, isHugePagesEnabled is set to true
+	 *
+	 * @return true if huge pages is enabled, false otherwise
+	 */
+	MMINLINE bool
+	isHugePagesEnabled()
+	{
+		return _enableHugePages;
 	}
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
