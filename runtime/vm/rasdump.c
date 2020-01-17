@@ -479,6 +479,11 @@ allocateRASStruct(J9JavaVM *javaVM)
 #endif
 		params.category = OMRMEM_CATEGORY_VM;
 
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 		result = j9vmem_reserve_memory_ex(&identifier, &params);
 		if (NULL != result) {
 			memcpy(&result->vmemid, &identifier, sizeof(identifier));

@@ -889,6 +889,11 @@ static void initS390WriteOnceHelpers(J9JITConfig *jitConfig,
       vmemParams.alignmentInBytes = 4096;
 
       J9PortVmemIdentifier identifier;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+	vmemParams.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
       uint8_t *tables = (uint8_t *) j9vmem_reserve_memory_ex(&identifier, &vmemParams);
 
       uint8_t *arrayCopyTable       = &tables[4096*0];

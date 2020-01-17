@@ -447,6 +447,11 @@ j9vmem_bench_write_and_decommit_memory(struct J9PortLibrary *portLibrary, UDATA 
 	params.pageSize = pageSize;
 	params.category = OMRMEM_CATEGORY_PORT_LIBRARY;
 	params.options |= J9PORT_VMEM_STRICT_PAGE_SIZE;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+	params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 	memPtr = j9vmem_reserve_memory_ex(&vmemID, &params);
 
 	/* check if we got memory */
@@ -546,6 +551,11 @@ j9vmem_bench_force_overcommit_then_decommit(struct J9PortLibrary *portLibrary, U
 	params.pageSize = pageSize;
 	params.category = OMRMEM_CATEGORY_PORT_LIBRARY;
 	params.options |= J9PORT_VMEM_STRICT_PAGE_SIZE;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+	params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 	memPtr = j9vmem_reserve_memory_ex(&vmemID, &params);
 
 	/* check we get memory */
@@ -638,6 +648,11 @@ j9vmem_bench_reserve_write_decommit_and_free_memory(struct J9PortLibrary *portLi
 	params.pageSize = pageSize;
 	params.category = OMRMEM_CATEGORY_PORT_LIBRARY;
 	params.options |= J9PORT_VMEM_STRICT_PAGE_SIZE;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+	params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 
 	startTimeNanos = j9time_nano_time();
 
@@ -733,6 +748,11 @@ j9vmem_exhaust_virtual_memory(struct J9PortLibrary *portLibrary, UDATA pageSize,
 		params[i].pageSize = pageSize;
 		params[i].category = OMRMEM_CATEGORY_PORT_LIBRARY;
 		params[i].options |= J9PORT_VMEM_STRICT_PAGE_SIZE;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		params[i].mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 
 		memPtr = memPointers[i] = j9vmem_reserve_memory_ex(&vmemID[i], &params[i]);
 
@@ -1060,6 +1080,11 @@ j9vmem_testReserveMemoryEx_impl(struct J9PortLibrary *portLibrary, const char* t
 			params[j].category = OMRMEM_CATEGORY_PORT_LIBRARY;
 
 			params[j].options |= options;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+			params[j].mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 
 			outputComment(portLibrary, "\tPage Size: 0x%zx Range: [0x%zx,0x%zx] "\
 						"topDown: %s quickSearch: %s strictAddress: %s strictPageSize: %s useExtendedPrivateAreaMemory: %s\n",\
@@ -1223,6 +1248,11 @@ memoryIsAvailable(struct J9PortLibrary *portLibrary, BOOLEAN strictAddress){
 			}
 
 			/* reserve and commit */
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+			params[j].mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 			memPtr[j] = j9vmem_reserve_memory_ex(&vmemID[j], &params[j]);
 
 			/* did we get any memory */
@@ -1291,6 +1321,11 @@ j9vmem_testReserveMemoryEx_zOSLargePageBelowBar(struct J9PortLibrary *portLibrar
 		params.pageSize = pageSizes[i];
 		params.pageFlags = pageFlags[i];
 		params.options = 0;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 		
 		outputComment(portLibrary, "\tPage Size: 0x%zx Range: [0x%zx,0x%zx] "\
 					"topDown: %s strictAddress: %s strictPageSize: %s useExtendedPrivateAreaMemory: %s\n",\
@@ -1379,6 +1414,11 @@ j9vmem_testReserveMemoryExStrictAddress_zOSLargePageBelowBar(struct J9PortLibrar
 		params.pageSize = pageSizes[i];
 		params.pageFlags = pageFlags[i];
 		params.options = J9PORT_VMEM_STRICT_ADDRESS;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 
 		outputComment(portLibrary, "\tPage Size: 0x%zx Range: [0x%zx,0x%zx] "\
 					"topDown: %s strictAddress: %s strictPageSize: %s useExtendedPrivateAreaMemory: %s\n",\
@@ -1479,6 +1519,11 @@ j9vmem_testReserveMemoryEx_zOS_useExtendedPrivateAreaMemoryLargePage(struct J9Po
 		params.pageSize = pageSizes[i];
 		params.pageFlags = pageFlags[i];
 		params.options = J9PORT_VMEM_ZOS_USE_EXTENDED_PRIVATE_AREA;
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 
 		outputComment(portLibrary, "\tPage Size: 0x%zx Range: [0x%zx,0x%zx] "\
 					"topDown: %s strictAddress: %s strictPageSize: %s useExtendedPrivateAreaMemory: %s\n",\
@@ -1563,6 +1608,11 @@ j9vmem_test_commitOutsideOfReservedRange(struct J9PortLibrary *portLibrary)
 		params.mode |= J9PORT_VMEM_MEMORY_MODE_READ | J9PORT_VMEM_MEMORY_MODE_WRITE;
 		params.options |= J9PORT_VMEM_STRICT_PAGE_SIZE;
 		params.pageSize = pageSizes[i];
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 
 		/* reserve */
 		memPtr = j9vmem_reserve_memory_ex(&vmemID, &params);
@@ -1653,6 +1703,11 @@ j9vmem_test_reserveExecutableMemory(struct J9PortLibrary *portLibrary)
 		params.options |= J9PORT_VMEM_STRICT_PAGE_SIZE;
 		params.pageSize = pageSizes[i];
 		params.pageFlags = pageFlags[i];
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		params.mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 	
 		/* reserve */
 		memPtr = j9vmem_reserve_memory_ex(&vmemID, &params);
@@ -3397,6 +3452,11 @@ j9vmem_testOverlappingSegments(struct J9PortLibrary *portLibrary)
 	for (i = 0; i < CYCLES; i++) {
 		char *memPtr = NULL;
 		getParams(portLibrary, &vmemParams[i]);
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		vmemParams[i].mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 		memPtr = j9vmem_reserve_memory_ex(&vmemID[i], &vmemParams[i]);
 
 		if (NULL == memPtr) {

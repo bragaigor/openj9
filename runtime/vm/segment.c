@@ -382,6 +382,13 @@ static J9MemorySegment * allocateVirtualMemorySegmentInListInternal(J9JavaVM *ja
 			vmemParams->byteAmount = segment->size;
 		}
 
+#if defined(LINUX)
+#if __GLIBC_PREREQ(2,27)
+		if (vmemParams != NULL) {
+			vmemParams->mode |= OMRPORT_VMEM_MEMORY_MODE_USE_MMAP;
+		}
+#endif /* __GLIBC_PREREQ(2,27) */
+#endif /* defined(LINUX) */
 		allocatedBase = (U_8 *) allocateMemoryForSegment(javaVM, segment, vmemParams, memoryCategory);
 
 		if (NULL == allocatedBase) {
