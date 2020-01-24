@@ -228,10 +228,13 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 	/* allocate leaf for each arraylet and attach it to its leaf pointer in the spine */
 	uintptr_t arrayoidIndex = 0;
 	fj9object_t *arrayoidPtr = extensions->indexableObjectModel.getArrayoidPointer(spine);
+	printf("Inside layoutDiscontiguousArraylet() allocating for spine: %p, _allocateDescription.getBytesRequested(): %zu, bytesRemaining: %zu\n", (void *)spine, _allocateDescription.getBytesRequested(), bytesRemaining);
 	while (0 < bytesRemaining) {
 		/* allocate the next arraylet leaf */
 		void *leaf = env->_objectAllocationInterface->allocateArrayletLeaf(env, &_allocateDescription,
 				_allocateDescription.getMemorySpace(), true);
+
+		printf("\tWe still had some byte left spine: %p, bytesRemaining: %zu, and leaf returned is leaf: %p\n", (void *)spine, bytesRemaining, (void *)leaf);
 
 		/* if leaf allocation failed set the result to NULL and return */
 		if (NULL == leaf) {
@@ -252,6 +255,7 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 
 		bytesRemaining -= OMR_MIN(bytesRemaining, arrayletLeafSize);
 		arrayoidIndex += 1;
+		printf("\tEnd of the loop. spine: %p, bytesRemaining updated to: %zu, arrayoidIndex: %zu, leaf: %p\n", (void *)spine, bytesRemaining, arrayoidIndex, (void *)leaf);
 	}
 
 	if (NULL != spine) {
@@ -342,18 +346,24 @@ MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J
 
 	GC_SlotObject *slotObject = NULL;
 	uintptr_t count = 0;
-
+	printf("Count was initialized to count: %zu\n", count);
 	while (NULL != (slotObject = arrayletLeafIterator.nextLeafPointer())) {
 		void *currentLeaf = slotObject->readReferenceFromSlot();
+		printf("\tbegining of loop. count: %zu, currentLeaf: %p\n", count, (void *)currentLeaf);
 		/* In some corner cases the last leaf might be NULL therefore we must ignore it */
 		if (NULL == currentLeaf) {
+			printf("\t\tcurrentLeaf is indeed NULL therefore I'm exiting the count loop. count: %zu\n", count);
 			break;
 		}
 		arrayletLeaveAddrs[count] = currentLeaf;
+		printf("\tcount before increment, count: %zu\n", count);
 		count++;
+		void *tempValuePtr = (void *)((UDATA)((void *)currentLeaf) + arrayletLeafSize - 64); //Hopefully this points me to the right place at the end of an arraylet leaf
+		printf("\tcurrentLeaf is not null: %p, and count AFTER increment to be, count: %zu, tempValuePtr: %p\n", (void *)currentLeaf, count, tempValuePtr);
 	}
 
 	/* Number of arraylet leaves in the iterator must match the number of leaves calculated */
+	printf("Inside MM_IndexableObjectAllocationModel::doubleMapArraylets(). objectPtr: %p, arrayletLeafSize: %zu, arrayletLeafCount: %zu, count: %zu, _dataSize: %zu, extensions->requestedPageSize: %zu\n", (void *)objectPtr, (size_t)arrayletLeafSize, (size_t)arrayletLeafCount, (size_t)count, (size_t)_dataSize, (size_t)extensions->requestedPageSize);
 	Assert_MM_true(arrayletLeafCount == count);
 
 	GC_SlotObject objectSlot(env->getOmrVM(), &extensions->indexableObjectModel.getArrayoidPointer((J9IndexableObject *)objectPtr)[0]);

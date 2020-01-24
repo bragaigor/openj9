@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 1991, 2019 IBM Corp. and others
+ * Copyright (c) 1991, 2020 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -314,7 +314,10 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 				GC_SlotObject objectSlot(env->getOmrVM(), &indexableObjectModel->getArrayoidPointer(arrayObject)[0]);
 				data = objectSlot.readReferenceFromSlot();
 			} else {
-				/* Possible to reach here if arraylet leaf has one leaf and no elements in it */
+				/* Possible to reach here if arraylet leaf has one leaf and no elements in it.
+				 * Even though there are no elements in it the caller expects a non NULL value
+				 * therefore we just return the address after the object header. */
+				data = (void *)GC_SlotObject::addToSlotAddress((fomrobject_t*)arrayObject, 1, env->compressObjectReferences());
 				Assert_MM_true((1 == indexableObjectModel->numArraylets(arrayObject)) && (0 == indexableObjectModel->getSizeInElements(arrayObject)));
 			}
 		} else

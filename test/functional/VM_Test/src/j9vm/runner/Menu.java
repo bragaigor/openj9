@@ -318,6 +318,7 @@ public void runTestSet(Vector classNames) {
 	for (int i = 0; i<classNames.size(); i++)  {
 		String className = (String)classNames.get(i);
 		System.out.println("+++ " + className + ": +++");
+		if (!className.contains("CriticalRegionTest")) continue;
 		Runner runner = newRunnerForTest(className, jarFileName);
 		passed = false;
 		try  {
