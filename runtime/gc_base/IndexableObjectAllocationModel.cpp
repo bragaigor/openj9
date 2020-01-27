@@ -354,6 +354,7 @@ MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J
 	}
 
 	/* Number of arraylet leaves in the iterator must match the number of leaves calculated */
+	printf("Inside MM_IndexableObjectAllocationModel::doubleMapArraylets(). objectPtr: %p, arrayletLeafSize: %zu, arrayletLeafCount: %zu, count: %zu, _dataSize: %zu, extensions->requestedPageSize: %zu\n", (void *)objectPtr, (size_t)arrayletLeafSize, (size_t)arrayletLeafCount, (size_t)count, (size_t)_dataSize, (size_t)extensions->requestedPageSize);
 	Assert_MM_true(arrayletLeafCount == count);
 
 	GC_SlotObject objectSlot(env->getOmrVM(), &extensions->indexableObjectModel.getArrayoidPointer((J9IndexableObject *)objectPtr)[0]);
