@@ -274,10 +274,13 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 			/* if last arraylet leaf is empty (contains 0 bytes) arrayoid pointer is set to NULL */
 			if (arrayoidIndex == (_numberOfArraylets - 1)) {
+				printf("\tLast arraylet lead is indeed empty, setting last arraylet leaf to NULL! arrayoidIndex: %zu, _numberOfArraylets: %zu, _dataSize: %zu, arrayletLeafSize: %zu\n", arrayoidIndex, _numberOfArraylets, _dataSize, arrayletLeafSize);
 				Assert_MM_true(0 == (_dataSize % arrayletLeafSize));
 				GC_SlotObject slotObject(env->getOmrVM(), &(arrayoidPtr[arrayoidIndex]));
 				slotObject.writeReferenceToSlot(NULL);
+				printf("\tJust set last arraylet leaf to NULL!!!!!!! leaf: %p\n", (void *)slotObject.readReferenceFromSlot());
 			} else {
+				printf("\t######\t#######\tLast arraylet leaf is not empty. _dataSize: %zu, arrayletLeafSize: %zu, _numberOfArraylets: %zu\n", _dataSize, arrayletLeafSize, _numberOfArraylets);
 				Assert_MM_true(0 != (_dataSize % arrayletLeafSize));
 				Assert_MM_true(arrayoidIndex == _numberOfArraylets);
 			}
@@ -358,8 +361,14 @@ MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J
 		arrayletLeaveAddrs[count] = currentLeaf;
 		printf("\tcount before increment, count: %zu\n", count);
 		count++;
-		void *tempValuePtr = (void *)((UDATA)((void *)currentLeaf) + arrayletLeafSize - 64); //Hopefully this points me to the right place at the end of an arraylet leaf
-		printf("\tcurrentLeaf is not null: %p, and count AFTER increment to be, count: %zu, tempValuePtr: %p\n", (void *)currentLeaf, count, tempValuePtr);
+		char *tempValuePtr = (char *)((void *)((UDATA)((void *)currentLeaf) + arrayletLeafSize - 64)); //Hopefully this points me to the right place at the end of an arraylet leaf
+		printf("\tcurrentLeaf is not null: %p, and count AFTER increment to be, count: %zu\n", (void *)currentLeaf, count);
+		printf("\ttempValuePtr: %p. if it breaks the next line will probably not be printed out!\n", (void *)tempValuePtr);
+		printf("\t\ttempValuePtr[0]: %x\n", tempValuePtr[0]);
+		printf("\t\ttempValuePtr[1]: %x\n", tempValuePtr[1]);
+		printf("\t\ttempValuePtr[2]: %x\n", tempValuePtr[2]);
+		printf("\t\ttempValuePtr[3]: %x\n", tempValuePtr[3]);
+		printf("\tLast 64 bit values of currentLeaf, tempValuePtr[4]: %x, [5]: %x, [6]: %x, [7]: %x, Together: 0x%x%x%x%x%x%x%x%x\n", tempValuePtr[4], tempValuePtr[5], tempValuePtr[6], tempValuePtr[7], tempValuePtr[0], tempValuePtr[1], tempValuePtr[2], tempValuePtr[3], tempValuePtr[4], tempValuePtr[5], tempValuePtr[6], tempValuePtr[7]);
 	}
 
 	/* Number of arraylet leaves in the iterator must match the number of leaves calculated */
