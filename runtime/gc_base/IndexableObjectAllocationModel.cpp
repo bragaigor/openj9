@@ -261,17 +261,6 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 	if (NULL != spine) {
 		switch (_layout) {
 		case GC_ArrayletObjectModel::Discontiguous:
-#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
-			if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
-				/**
-				 * There are some special cases where double mapping an arraylet is
-				 * not necessary; isArrayletDataDiscontiguous() details those cases.
-				 */
-				if (extensions->indexableObjectModel.isArrayletDataDiscontiguous(spine)) {
-					doubleMapArraylets(env, (J9Object *)spine);
-				}
-			}
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 			/* if last arraylet leaf is empty (contains 0 bytes) arrayoid pointer is set to NULL */
 			if (arrayoidIndex == (_numberOfArraylets - 1)) {
 				printf("\tLast arraylet lead is indeed empty, setting last arraylet leaf to NULL! arrayoidIndex: %zu, _numberOfArraylets: %zu, _dataSize: %zu, arrayletLeafSize: %zu\n", arrayoidIndex, _numberOfArraylets, _dataSize, arrayletLeafSize);
@@ -284,6 +273,17 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 				Assert_MM_true(0 != (_dataSize % arrayletLeafSize));
 				Assert_MM_true(arrayoidIndex == _numberOfArraylets);
 			}
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+                        if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
+                                /**
+                                 * There are some special cases where double mapping an arraylet is
+                                 * not necessary; isArrayletDataDiscontiguous() details those cases.
+                                 */
+                                if (extensions->indexableObjectModel.isArrayletDataDiscontiguous(spine)) {
+                                        doubleMapArraylets(env, (J9Object *)spine);
+                                }
+                        }
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 			break;
 
 		case GC_ArrayletObjectModel::Hybrid:
