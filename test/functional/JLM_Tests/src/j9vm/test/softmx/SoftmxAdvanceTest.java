@@ -81,6 +81,7 @@ public class SoftmxAdvanceTest {
 		long original_softmx_value = ibmMemoryMBean.getMaxHeapSize();
 
 		logger.debug("	Starting Object allocation until used memory reaches 80% of current max heap size.");
+		System.out.println("Starting Object allocation until used memory reaches 80% of current max heap size.");
 
 		boolean exhausted = new MemoryExhauster().usePercentageOfHeap(0.8);
 
@@ -91,17 +92,22 @@ public class SoftmxAdvanceTest {
 
 		logger.debug("	Now we have used approximately 80% of current max heap size: "
 				+ ibmMemoryMBean.getHeapMemoryUsage().getCommitted() + " bytes");
+		System.out.println("Now we have used approximately 80% of current max heap size: "
+				+ ibmMemoryMBean.getHeapMemoryUsage().getCommitted() + " bytes");
 
 		//get current OS free memory size before reset softmx
 		long preMemSize = ibmOSMBean.getFreePhysicalMemorySize();
 
 		logger.debug("	Before resetting softmx value, the OS free physical memory size is: " + preMemSize + " bytes");
+		System.out.println("  Before resetting softmx value, the OS free physical memory size is: " + preMemSize + " bytes");
 
 		long new_softmx_value = (long)(original_softmx_value * 0.5);
 		logger.debug("	Resetting maximum heap size to 50% of original size: " + new_softmx_value);
+		System.out.println("  Resetting maximum heap size to 50% of original size: " + new_softmx_value);
 		ibmMemoryMBean.setMaxHeapSize(new_softmx_value);
 
 		logger.debug("	Forcing Aggressive GC. Will wait a maximum of 5 minutes for heap shrink...");
+		System.out.println("  Forcing Aggressive GC. Will wait a maximum of 5 minutes for heap shrink...");
 		TestNatives.setAggressiveGCPolicy();
 
 		/* figure out DisclaimVirtualMemory setting from VM arguments.
@@ -145,6 +151,8 @@ public class SoftmxAdvanceTest {
 				if (isShrink == true) {
 					logger.debug("	PASS: Heap has shrunk to " + ibmMemoryMBean.getHeapMemoryUsage().getCommitted()
 							+ " bytes" + " in " + (System.currentTimeMillis() - startTime) + " mSeconds");
+					System.out.println("  PASS: Heap has shrunk to " + ibmMemoryMBean.getHeapMemoryUsage().getCommitted()
+                                                        + " bytes" + " in " + (System.currentTimeMillis() - startTime) + " mSeconds");
 					break;
 				}
 			} else {
@@ -153,6 +161,9 @@ public class SoftmxAdvanceTest {
 					logger.debug("	Current committed memory:  " + ibmMemoryMBean.getHeapMemoryUsage().getCommitted()
 							+ " bytes");
 					logger.debug("	Heap did not shrink yet, forcing Aggressive GC again...");
+					System.out.println("  Current committed memory:  " + ibmMemoryMBean.getHeapMemoryUsage().getCommitted()
+                                                        + " bytes");
+					System.out.println("  Heap did not shrink yet, forcing Aggressive GC again...");
 					TestNatives.setAggressiveGCPolicy();
 				} catch (InterruptedException e) {
 					logger.error("	FAIL: Catch InterruptedException", e);
@@ -164,6 +175,7 @@ public class SoftmxAdvanceTest {
 
 		if (!isShrink) {
 			logger.warn("	Generate Java core dump after forcing GC.");
+			System.out.println("   Generate Java core dump after forcing GC.");
 			com.ibm.jvm.Dump.JavaDump();
 			com.ibm.jvm.Dump.HeapDump();
 			com.ibm.jvm.Dump.SystemDump();
@@ -171,6 +183,7 @@ public class SoftmxAdvanceTest {
 
 		if (isShrink == false) {
 			logger.error("	FAIL: Heap can't shrink to the reset max heap size within 5 minutes!");
+			System.out.println("  FAIL: Heap can't shrink to the reset max heap size within 5 minutes!");
 			returnVal = -1;
 			return;
 		}
@@ -178,6 +191,7 @@ public class SoftmxAdvanceTest {
 		/* add a waiting time between performing GC and checking for free physical memory in the OS*/
 		try {
 			logger.debug("Going to sleep for 5 seconds after Aggressive GC..");
+			System.out.println("Going to sleep for 5 seconds after Aggressive GC..");
 			Thread.currentThread().sleep(5000);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
@@ -189,11 +203,14 @@ public class SoftmxAdvanceTest {
 		logger.debug(
 				"	After resetting softmx and performing an aggressive GC to force heap to shrink, the OS free physical memory size is: "
 						+ postMemSize + " bytes");
+		System.out.println("       After resetting softmx and performing an aggressive GC to force heap to shrink, the OS free physical memory size is: "
+                                                + postMemSize + " bytes");
 
 		/*if -Xsoftmx is not present on the command line, -XX option will be ignored, use default setting, which are different on different OS's.
 		 * On Windows, Linux & AIX - set default value to advise OS about vmem that is no longer needed
 		 * z/OS - set default value to not advise OS about vmem that is no longer needed (but this functionality is not yet implemented on z/OS, and may not be)*/
 		long diff = postMemSize - preMemSize;
+		System.out.println("diff = postMemSize - preMemSize: " + diff + " = " + postMemSize + " - " + preMemSize);
 
 		boolean isMemRelease = false;
 
@@ -215,9 +232,13 @@ public class SoftmxAdvanceTest {
 			} else {
 				/*If the released memory is more than 10% of the original softmx value, the test assumes that
 				 *  disclaim memory is happening*/
+				System.out.println("diff: " + diff + ", new_softmx_value: " + new_softmx_value + ", new_softmx_value * 0.10: " + (new_softmx_value * 0.10));
 				if (diff > new_softmx_value * 0.10) {
+					System.out.println("GOOD!!! diff > new_softmx_value * 0.10");
 					logRelease(postMemSize, preMemSize);
 					isMemRelease = true;
+				} else {
+					System.out.println("BAAAAAD!! diff <= new_softmx_value * 0.10. This is going to FAIL!!!");
 				}
 
 				if (isMemRelease != true) {
@@ -234,12 +255,16 @@ public class SoftmxAdvanceTest {
 	private void logRelease(long postMemSize, long preMemSize) {
 		logger.debug("	PASS: Memory is released back to OS! Post memory size " + postMemSize
 				+ " is greater than previous memory size " + preMemSize + " by at least 10% of the new softmx value.");
+		System.out.println("  PASS: Memory is released back to OS! Post memory size " + postMemSize
+                                + " is greater than previous memory size " + preMemSize + " by at least 10% of the new softmx value.");
 	}
 
 	private void logNotRelease(long postMemSize, long preMemSize) {
 		logger.debug(
 				"	PASS: Memory is not released back to OS! The difference between post-memory size + " + postMemSize
 						+ " and " + "pre-memory size " + preMemSize + " is less than 20% of the new softmx value.");
+		System.out.println("       PASS: Memory is not released back to OS! The difference between post-memory size + " + postMemSize
+                                                + " and " + "pre-memory size " + preMemSize + " is less than 20% of the new softmx value.");
 	}
 
 }
