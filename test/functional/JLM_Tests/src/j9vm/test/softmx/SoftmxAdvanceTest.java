@@ -190,9 +190,9 @@ public class SoftmxAdvanceTest {
 
 		/* add a waiting time between performing GC and checking for free physical memory in the OS*/
 		try {
-			logger.debug("Going to sleep for 5 seconds after Aggressive GC..");
-			System.out.println("Going to sleep for 5 seconds after Aggressive GC..");
-			Thread.currentThread().sleep(5000);
+			logger.debug("Going to sleep for 20 seconds after Aggressive GC..");
+			System.out.println("Going to sleep for 20 seconds after Aggressive GC..");
+			Thread.currentThread().sleep(20000);
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
