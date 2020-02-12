@@ -321,7 +321,6 @@ MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J
 {
 	MM_GCExtensions *extensions = MM_GCExtensions::getExtensions(env);
 	J9JavaVM *javaVM = extensions->getJavaVM();
-	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
 	GC_ArrayletLeafIterator arrayletLeafIterator(javaVM, (J9IndexableObject *)objectPtr);
 	MM_Heap *heap = extensions->getHeap();
@@ -363,7 +362,7 @@ MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J
 	MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)heap->getHeapRegionManager()->tableDescriptorForAddress(firstLeafSlot);
 
 	/* gets pagesize  or j9vmem_supported_page_sizes()[0]? */
-	UDATA pageSize = j9mmap_get_region_granularity(NULL);
+	UDATA pageSize = extensions->requestedPageSize;
 
 	/* Get heap and from there call an OMR API that will doble map everything */
 	result = heap->doubleMapArraylet(env, arrayletLeaveAddrs, count, arrayletLeafSize, _dataSize,
