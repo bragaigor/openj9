@@ -259,7 +259,7 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 		spine = _allocateDescription.getSpine();
 		arrayoidPtr = extensions->indexableObjectModel.getArrayoidPointer(spine);
 		
-		printf("About to call GC_SlotObject::addToSlotAddress() spine: %p, arrayoidPtr: %zu\n", (void *)spine, arrayoidPtr);
+		printf("About to call GC_SlotObject::addToSlotAddress() spine: %p, arrayoidPtr: %p, arrayoidIndex:%zu\n", (void *)spine, (void *)arrayoidPtr, arrayoidIndex);
 
 		/* set the arrayoid pointer in the spine to point to the new leaf */
 		GC_SlotObject slotObject(env->getOmrVM(), GC_SlotObject::addToSlotAddress(arrayoidPtr, arrayoidIndex, compressed));

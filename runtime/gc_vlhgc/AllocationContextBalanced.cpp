@@ -319,7 +319,9 @@ MM_AllocationContextBalanced::allocateArrayletLeaf(MM_EnvironmentBase *env, MM_A
 	/* this AC implementation doesn't try to cache leaf regions so just call into the subspace to hand us a region and then we will use it in lockedAllocateArrayletLeaf */
 	void *result = NULL;
 	lockCommon();
+	printf("##\t##\t## Inside allocateArrayletLeaf() about to call lockedReplenishAndAllocate() env->getLanguageVMThread(): %p\n", (void *)env->getLanguageVMThread());
 	result = lockedReplenishAndAllocate(env, NULL, allocateDescription, MM_MemorySubSpace::ALLOCATION_TYPE_LEAF);
+	printf("##\t##\t## Right after lockedReplenishAndAllocate call and thread id is: %p\n", (void *)env->getLanguageVMThread());
 	unlockCommon();
 	/* if that fails, try to invoke the collector */
 	if (shouldCollectOnFailure && (NULL == result)) {
@@ -327,7 +329,9 @@ MM_AllocationContextBalanced::allocateArrayletLeaf(MM_EnvironmentBase *env, MM_A
 	}
 	if (NULL != result) {
 		/* zero the leaf here since we are not under any of the context or exclusive locks */
+		printf("!!!\t!\t!!! Right before calling OMRZeroMemory() on result: %p, thread id: %p, _heapRegionManager->getRegionSize(): %zu\n", result, (void *)env->getLanguageVMThread(), _heapRegionManager->getRegionSize());
 		OMRZeroMemory(result, _heapRegionManager->getRegionSize());
+		printf("!!!\t!\t!!! AFTER call of OMRZeroMemory to zero out leaves. result: %p, thread id: %p, _heapRegionManager->getRegionSize(): %zu\n", result, (void *)env->getLanguageVMThread(), _heapRegionManager->getRegionSize());
 	}
 	return result;
 }
