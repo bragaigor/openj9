@@ -40,6 +40,7 @@ GC_ObjectModelDelegate::initializeAllocation(MM_EnvironmentBase *env, void *allo
 	case MM_JavaObjectAllocationModel::allocation_category_indexable: {
 		MM_IndexableObjectAllocationModel *indexableObjectAllocationModel = (MM_IndexableObjectAllocationModel *)allocateInitialization;
 		objectPtr = (omrobjectptr_t)indexableObjectAllocationModel->initializeIndexableObject(env, allocatedBytes);
+		printf("Very very very early returned from initializeIndexableObject objectPtr: %p\n", (void *)objectPtr);
 		break;
 	}
 	default:

@@ -149,6 +149,7 @@ MM_IndexableObjectAllocationModel::initializeIndexableObject(MM_EnvironmentBase 
 			Trc_MM_allocateAndConnectNonContiguousArraylet_Summary(env->getLanguageVMThread(),
 					_numberOfIndexedFields, getAllocateDescription()->getContiguousBytes(), _numberOfArraylets);
 			spine = layoutDiscontiguousArraylet(env, spine);
+			printf("Spine returned from layoutDiscontiguousArraylet was: %p\n", (void *)spine);
 			Trc_MM_allocateAndConnectNonContiguousArraylet_Exit(env->getLanguageVMThread(), spine);
 		} else {
 			Trc_MM_allocateAndConnectNonContiguousArraylet_spineFailure(env->getLanguageVMThread());
@@ -162,10 +163,14 @@ MM_IndexableObjectAllocationModel::initializeIndexableObject(MM_EnvironmentBase 
 
 	if (NULL != spine) {
 		/* Initialize hashcode slot */
+		printf("Arraylet spine created successfully spine: %p. Initialize hashcode slot\n", (void *)spine);
 		if (getAllocateDescription()->getPreHashFlag()) {
+			printf("\tAbout to call objectModel.initializeHashSlot() on spine: %p\n", (void *)spine);
 			env->getExtensions()->objectModel.initializeHashSlot((J9JavaVM*)env->getLanguageVM(), (omrobjectptr_t)spine);
+			printf("\tReturned from initializeHashSlot() on spine: %p\n", (void *)spine);
 		}
 		Assert_MM_true(env->getExtensions()->objectModel.isIndexable((omrobjectptr_t)spine));
+		printf("111111111111 After objectModel.initializeHashSlot()\n");
 	}
 
 	Assert_MM_true(spine == _allocateDescription.getSpine());
@@ -214,6 +219,7 @@ MM_IndexableObjectAllocationModel::layoutContiguousArraylet(MM_EnvironmentBase *
 MMINLINE J9IndexableObject *
 MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBase *env, J9IndexableObject *spine)
 {
+	printf("Inside layoutDiscontiguousArraylet() was called with spine: %p\n", (void *)spine);
 	Assert_MM_true(_numberOfArraylets == _allocateDescription.getNumArraylets());
 
 	MM_GCExtensions *extensions = MM_GCExtensions::getExtensions(env);
@@ -229,31 +235,42 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 	/* allocate leaf for each arraylet and attach it to its leaf pointer in the spine */
 	uintptr_t arrayoidIndex = 0;
 	fj9object_t *arrayoidPtr = extensions->indexableObjectModel.getArrayoidPointer(spine);
+	printf("About to enter loop to create arraylet leaves. arrayoidIndex: %zu, bytesRemaining: %zu, arrayletLeafSize: %zu\n", arrayoidIndex, bytesRemaining, arrayletLeafSize);
 	while (0 < bytesRemaining) {
+		printf("Inside while loop about to allocate leaf arrayoidIndex: %zu, bytesRemaining: %zu\n", arrayoidIndex, bytesRemaining);
 		/* allocate the next arraylet leaf */
 		void *leaf = env->_objectAllocationInterface->allocateArrayletLeaf(env, &_allocateDescription,
 				_allocateDescription.getMemorySpace(), true);
+		printf("leaf allocation returned: leaf: %p\n", leaf);
 
 		/* if leaf allocation failed set the result to NULL and return */
 		if (NULL == leaf) {
+			printf("Leaf allocation FAILED!!! Leaf is NULL! Setting spine to NULL. breaking the loop\n");
 			/* spine and preceding arraylets are now floating garbage */
 			Trc_MM_allocateAndConnectNonContiguousArraylet_leafFailure(env->getLanguageVMThread());
 			_allocateDescription.setSpine(NULL);
 			spine = NULL;
 			break;
+		} else {
+			printf("Allocated leaf succesfully and address is leaf: %p\n", leaf);
 		}
 
 		/* refresh the spine -- it might move if we GC while allocating the leaf */
 		spine = _allocateDescription.getSpine();
 		arrayoidPtr = extensions->indexableObjectModel.getArrayoidPointer(spine);
+		
+		printf("About to call GC_SlotObject::addToSlotAddress() spine: %p, arrayoidPtr: %zu\n", (void *)spine, arrayoidPtr);
 
 		/* set the arrayoid pointer in the spine to point to the new leaf */
 		GC_SlotObject slotObject(env->getOmrVM(), GC_SlotObject::addToSlotAddress(arrayoidPtr, arrayoidIndex, compressed));
+		printf("Writing to slotObject slotObject.writeReferenceToSlo() spine: %p, arrayoidPtr: %p, arrayoidIndex: %zu\n", (void *)spine, (void *)arrayoidPtr, arrayoidIndex);
 		slotObject.writeReferenceToSlot((omrobjectptr_t)leaf);
 
 		bytesRemaining -= OMR_MIN(bytesRemaining, arrayletLeafSize);
 		arrayoidIndex += 1;
+		printf("At the end of the loop, bytesRemaining: %zu, arrayoidIndex: %zu, arrayoidPtr: %p, spine: %p\n", bytesRemaining, arrayoidIndex, arrayoidPtr, (void *)spine);
 	}
+	printf("!!!!!!!!!!!!!! Outside while loop, did leaves get created or not?? spine: %p, bytesRemaining: %zu, arrayoidIndex: %zu\n", (void *)spine, bytesRemaining, arrayoidIndex);
 
 	if (NULL != spine) {
 		switch (_layout) {
@@ -269,12 +286,15 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 			}
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 			if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
+				printf("Inside layoutDiscontiguousArraylet() just created object with spine: %p, _numberOfArraylets: %zu, arrayoidIndex: %zu, bytesRequested: %zu\n", (void *)spine, _numberOfArraylets, arrayoidIndex, _allocateDescription.getBytesRequested());
 				/**
 				 * There are some special cases where double mapping an arraylet is
 				 * not necessary; isArrayletDataDiscontiguous() details those cases.
 				 */
 				if (extensions->indexableObjectModel.isArrayletDataDiscontiguous(spine)) {
+					printf("#################### About to call doubleMapArraylets()!!! spine: %p\n", (void *)spine);
 					doubleMapArraylets(env, (J9Object *)spine);
+					printf("#################### just returned from doubleMapArraylets() call!!!!! Did I get printed????? spine: %p\n", (void *)spine);
 				}
 			}
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
@@ -307,6 +327,7 @@ MM_IndexableObjectAllocationModel::layoutDiscontiguousArraylet(MM_EnvironmentBas
 			break;
 		}
 	}
+	printf("End of the method and returning spine: %p\n", (void *)spine);
 
 	return spine;
 }

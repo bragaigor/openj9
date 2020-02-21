@@ -392,6 +392,7 @@ MM_CopyForwardScheme::clearGCStats(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::updateLeafRegions(MM_EnvironmentVLHGC *env)
 {
+	printf("Inside updateLeafRegions()!!!!!\n");
 	GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
 	MM_HeapRegionDescriptorVLHGC *region = NULL;
 
@@ -414,6 +415,7 @@ MM_CopyForwardScheme::updateLeafRegions(MM_EnvironmentVLHGC *env)
 				region->_allocateData.addToArrayletLeafList(updatedSpineRegion);
 				region->_allocateData.setSpine((J9IndexableObject *)updatedSpineObject);
 			} else if (!isLiveObject(spineObject)) {
+				printf("Spine is DEAD!!! spineObject: %p, about to call recycleRegion on this region: %p\n", (void *)spineObject, (void *)region);
 				Assert_MM_true(isObjectInEvacuateMemory(spineObject));
 				/* the spine is in evacuate space so the arraylet is dead => recycle the leaf */
 				/* remove arraylet leaf from list */
@@ -3895,6 +3897,7 @@ private:
 				Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
 				env->_copyForwardStats._doubleMappedArrayletsCleared += 1;
 				PORT_ACCESS_FROM_ENVIRONMENT(_env);
+				printf("Freeing contiguous address: %p\n", identifier->address);
 				j9vmem_free_memory(identifier->address, identifier->size, identifier);
 			}
 		}
