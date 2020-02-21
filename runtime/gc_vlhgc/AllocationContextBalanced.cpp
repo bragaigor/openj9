@@ -329,9 +329,10 @@ MM_AllocationContextBalanced::allocateArrayletLeaf(MM_EnvironmentBase *env, MM_A
 	}
 	if (NULL != result) {
 		/* zero the leaf here since we are not under any of the context or exclusive locks */
-		printf("!!!\t!\t!!! Right before calling OMRZeroMemory() on result: %p, thread id: %p, _heapRegionManager->getRegionSize(): %zu\n", result, (void *)env->getLanguageVMThread(), _heapRegionManager->getRegionSize());
-		OMRZeroMemory(result, _heapRegionManager->getRegionSize());
-		printf("!!!\t!\t!!! AFTER call of OMRZeroMemory to zero out leaves. result: %p, thread id: %p, _heapRegionManager->getRegionSize(): %zu\n", result, (void *)env->getLanguageVMThread(), _heapRegionManager->getRegionSize());
+		printf("!!!\t!\t!!! Right before calling memset() on result: %p, thread id: %p, _heapRegionManager->getRegionSize(): %zu\n", result, (void *)env->getLanguageVMThread(), _heapRegionManager->getRegionSize());
+		//OMRZeroMemory(result, _heapRegionManager->getRegionSize());
+		memset(result, 0, (size_t)_heapRegionManager->getRegionSize());
+		printf("!!!\t!\t!!! AFTER call of memset to zero out leaves. result: %p, thread id: %p, _heapRegionManager->getRegionSize(): %zu\n", result, (void *)env->getLanguageVMThread(), _heapRegionManager->getRegionSize());
 	}
 	return result;
 }
