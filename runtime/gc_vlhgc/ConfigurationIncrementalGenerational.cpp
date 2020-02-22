@@ -109,6 +109,8 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 			extensions->indexableObjectModel.setEnableDoubleMapping(true);
 		}
 	}
+	printf("Double mapping should be false however we should still have a shared heap!!!!!\n");
+	extensions->indexableObjectModel.setEnableDoubleMapping(false);
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 	/* when we try to attach this heap to a region manager, we will need the card table since it needs to be NUMA-affinitized using the same logic as the heap so initialize it here */
