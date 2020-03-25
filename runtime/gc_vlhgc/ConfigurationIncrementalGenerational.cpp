@@ -112,7 +112,7 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 	 *
 	 */
 	if (extensions->isArrayletDoubleMapRequested && extensions->isDoubleMapAPIAvailable) {
-		uintptr_t pagesize = extensions->requestedPageSize;
+		uintptr_t pagesize = heap->getPageSize();
 		if (!extensions->memoryManager->isLargePage(env, pagesize) || (pagesize <= extensions->getOmrVM()->_arrayletLeafSize)) {
 			extensions->indexableObjectModel.setEnableDoubleMapping(true);
 		}
