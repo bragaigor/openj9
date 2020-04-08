@@ -116,6 +116,11 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 		if (!extensions->memoryManager->isLargePage(env, pagesize) || (pagesize <= extensions->getOmrVM()->_arrayletLeafSize)) {
 			extensions->indexableObjectModel.setEnableDoubleMapping(true);
 		}
+	} else if (extensions->isArrayletDoubleMapRequested) {
+		uintptr_t pagesize = heap->getPageSize();
+		if (!extensions->memoryManager->isLargePage(env, pagesize) || (pagesize <= extensions->getOmrVM()->_arrayletLeafSize)) {
+			extensions->indexableObjectModel.setEnableDoubleMapping(true);
+		}
 	}
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
