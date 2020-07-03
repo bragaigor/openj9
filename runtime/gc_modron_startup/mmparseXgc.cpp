@@ -1443,8 +1443,6 @@ gcParseXgcArguments(J9JavaVM *vm, char *optArg)
 			}
 			continue;
 		}
-
-#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 		if (try_scan(&scan_start, "enableArrayletDoubleMapping")) {
 			extensions->isArrayletDoubleMapRequested = true;
 			continue;
@@ -1453,8 +1451,6 @@ gcParseXgcArguments(J9JavaVM *vm, char *optArg)
 			extensions->isArrayletDoubleMapRequested = false;
 			continue;
 		}
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-
 #if defined (J9VM_GC_VLHGC)
 		if (try_scan(&scan_start, "fvtest_tarokForceNUMANode=")) {
 			if(!scan_udata_helper(vm, &scan_start, &extensions->fvtest_tarokForceNUMANode, "fvtest_tarokForceNUMANode=")) {
