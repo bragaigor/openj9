@@ -120,11 +120,14 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 	/* when we try to attach this heap to a region manager, we will need the card table since it needs to be NUMA-affinitized using the same logic as the heap so initialize it here */
+	printf("Inside openJ9 createHeapWithManager and about to call MM_IncrementalCardTable::newInstance\n");
 	extensions->cardTable = MM_IncrementalCardTable::newInstance(MM_EnvironmentVLHGC::getEnvironment(env), heap);
 	if (NULL == extensions->cardTable) {
 		heap->kill(env);
 		return NULL;
 	}
+
+	printf("Inside openJ9 createHeapWithManager and just called MM_IncrementalCardTable::newInstance\n");
 
 	if (extensions->tarokEnableCompressedCardTable) {
 		extensions->compressedCardTable = MM_CompressedCardTable::newInstance(MM_EnvironmentVLHGC::getEnvironment(env), heap);
@@ -153,6 +156,8 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 		}
 	}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
+	printf("\tInside createHeapWithManager for balanced!!! and returning heap: %p\n", (void*)heap);
 
 	return heap;
 }

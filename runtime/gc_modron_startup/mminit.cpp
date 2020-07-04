@@ -319,7 +319,9 @@ j9gc_initialize_heap(J9JavaVM *vm, IDATA *memoryParameterTable, UDATA heapBytesR
 	vm->initializeSlotsOnTLHAllocate = (extensions->batchClearTLH == 0) ? 1 : 0;
 #endif /* J9VM_GC_BATCH_CLEAR_TLH */
 
+	printf("Inside j9gc_initialize_heap BEFORE call to createHeap. heap size requested: %zu\n", heapBytesRequested);
 	extensions->heap = extensions->configuration->createHeap(&env, heapBytesRequested);
+	printf("Inside j9gc_initialize_heap after call to createHeap. heap address: %p, with size: %zu\n", extensions->heap, heapBytesRequested);
 
 	if (NULL == extensions->heap) {
 		const char *splitFailure = NULL;
@@ -3006,6 +3008,8 @@ gcInitializeDefaults(J9JavaVM* vm)
 		}
 		loadInfo->fatalErrorStr = NULL;
 	}
+
+	printf("------ We're here and heap was initialized as normal...\n");
 
 	warnIfPageSizeNotSatisfied(vm,extensions);
 	j9mem_free_memory(memoryParameterTable);
