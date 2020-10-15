@@ -6913,6 +6913,7 @@ static void genInitArrayHeader(
       TR::Register *tempReg,
       bool isZeroInitialized,
       bool isDynamicAllocation,
+      bool shouldInitZeroSizedArrayHeader,
       TR::CodeGenerator *cg)
    {
    TR_J9VMBase *fej9 = (TR_J9VMBase *)(cg->fe());
@@ -6936,7 +6937,26 @@ static void genInitArrayHeader(
    if (sizeReg)
       {
       // Variable size
-      //
+      // Special handling of zero sized arrays.
+      // Zero length arrays are discontiguous (i.e. they also need the discontiguous length field to be 0) because
+      // they are indistinguishable from non-zero length discontiguous arrays. But instead of explicitly checking
+      // for zero sized arrays we unconditionally store 0 in the third dword of the array object header. That is
+      // safe because the 3rd dword is either array size of a zero sized array or will contain the first elements
+      // of an array:
+      // - Zero sized arrays have the following layout:
+      // - The smallest array possible is a byte array with 1 element which would have a layout:
+      //   #bits per section:         | 32 bits |  32 bits   |     32 bits      | 32 bits |
+      //   zero sized arrays:         |  class  | mustBeZero |       size       | padding |
+      //   smallest contiguous array: |  class  |    size    | 1 byte + padding | padding |
+      //   This also reflects the minimum object size which is 16 bytes.
+      int32_t arrayDiscontiguousSizeOffset = fej9->getOffsetOfDiscontiguousArraySizeField();
+      TR::MemoryReference *arrayDiscontiguousSizeMR = generateX86MemoryReference(objectReg, arrayDiscontiguousSizeOffset, cg);
+
+      if (shouldInitZeroSizedArrayHeader)
+         {
+         generateMemImmInstruction(S4MemImm4, node, arrayDiscontiguousSizeMR, 0, cg);
+         }
+
       if (canUseFastInlineAllocation)
          {
          // Native 64-bit needs to cover the discontiguous size field
@@ -7023,8 +7043,15 @@ static bool genZeroInitObject2(
 
    // set up clazz value here
    TR_OpaqueClassBlock *clazz = NULL;
+   bool isArrayNew = (node->getOpCodeValue() != TR::New);
    comp->canAllocateInline(node, clazz);
-   auto headerSize = node->getOpCodeValue() != TR::New ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
+   auto headerSize = isArrayNew ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
+   // If we are using full refs both contiguous and discontiguous array header have the same size, in which case we must adjust header size
+   // slightly so that rep stosb can initialize the size field of zero sized arrays appropriately
+   if (!TR::Compiler->om.compressObjectReferences() && isArrayNew)
+      {
+      headerSize -= 8;
+      }
    TR_ASSERT(headerSize >= 4, "Object/Array header must be >= 4.");
    objectSize -= headerSize;
 
@@ -7161,6 +7188,10 @@ static bool genZeroInitObject(
 
    int32_t numSlots = 0;
    int32_t startOfZeroInits = isArrayNew ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
+   if (!TR::Compiler->om.compressObjectReferences() && isArrayNew)
+      {
+      startOfZeroInits -= 8;
+      }
 
    if (comp->target().is64Bit())
       {
@@ -7724,6 +7755,7 @@ J9::X86::TreeEvaluator::VMnewEvaluator(
    // --------------------------------------------------------------------------------
 
    TR::Register *scratchReg = NULL;
+   bool shouldInitZeroSizedArrayHeader = true;
 
 #ifdef J9VM_GC_NON_ZERO_TLH
    if (comp->getOption(TR_DisableDualTLH) || comp->getOptions()->realTimeGC())
@@ -7846,6 +7878,8 @@ J9::X86::TreeEvaluator::VMnewEvaluator(
             useRepInstruction = genZeroInitObject(node, objectSize, elementSize, sizeReg, targetReg, tempReg, segmentReg, scratchReg, cg);
             }
 
+         shouldInitZeroSizedArrayHeader = false;
+
          J9JavaVM * jvm = fej9->getJ9JITConfig()->javaVM;
          if (jvm->lockwordMode == LOCKNURSERY_ALGORITHM_ALL_INHERIT)
             monitorSlotIsInitialized = false;
@@ -7902,6 +7936,7 @@ J9::X86::TreeEvaluator::VMnewEvaluator(
             tempReg,
             monitorSlotIsInitialized,
             true,
+            shouldInitZeroSizedArrayHeader,
             cg);
       }
    else if (isArrayNew)
@@ -7917,6 +7952,7 @@ J9::X86::TreeEvaluator::VMnewEvaluator(
             tempReg,
             monitorSlotIsInitialized,
             false,
+            shouldInitZeroSizedArrayHeader,
             cg);
       }
    else
