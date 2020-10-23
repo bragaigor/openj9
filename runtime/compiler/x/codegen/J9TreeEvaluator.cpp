@@ -6937,6 +6937,18 @@ static void genInitArrayHeader(
       {
       // Variable size
       //
+      // for zero sized arrays we unconditionally store 0 in the third dword of the array object header. That is
+      // safe because the 3rd dword is either array size of a zero sized array or will contain the first elements
+      // of an array:
+      // - Zero sized arrays have the following layout:
+      // - The smallest array possible is a byte array with 1 element which would have a layout:
+      //   #bits per section:         | 32 bits |  32 bits   |     32 bits      | 32 bits |
+      //   zero sized arrays:         |  class  | mustBeZero |       size       | padding |
+      //   smallest contiguous array: |  class  |    size    | 1 byte + padding | padding |
+      //   This also reflects the minimum object size which is 16 bytes.
+      int32_t arrayDiscontiguousSizeOffset = fej9->getOffsetOfDiscontiguousArraySizeField();
+      TR::MemoryReference *arrayDiscontiguousSizeMR = generateX86MemoryReference(objectReg, arraySizeOffset+4, cg);
+
       if (canUseFastInlineAllocation)
          {
          // Native 64-bit needs to cover the discontiguous size field
@@ -7019,12 +7031,14 @@ static bool genZeroInitObject2(
       TR::Register *&scratchReg,
       TR::CodeGenerator *cg)
    {
+
    TR::Compilation *comp = cg->comp();
 
    // set up clazz value here
    TR_OpaqueClassBlock *clazz = NULL;
+   bool isArrayNew = (node->getOpCodeValue() != TR::New);
    comp->canAllocateInline(node, clazz);
-   auto headerSize = node->getOpCodeValue() != TR::New ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
+   auto headerSize = isArrayNew ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
    TR_ASSERT(headerSize >= 4, "Object/Array header must be >= 4.");
    objectSize -= headerSize;
 
@@ -7050,6 +7064,7 @@ static bool genZeroInitObject2(
          // -------------
          // Subtract off the header size and initialize the remaining slots.
          //
+         // All I'm doing is inserting random comments
          generateRegImmInstruction(SUBRegImms(), node, tempReg, headerSize, cg);
          }
       else
@@ -7724,6 +7739,7 @@ J9::X86::TreeEvaluator::VMnewEvaluator(
    // --------------------------------------------------------------------------------
 
    TR::Register *scratchReg = NULL;
+   bool shouldInitZeroSizedArrayHeader = true;
 
 #ifdef J9VM_GC_NON_ZERO_TLH
    if (comp->getOption(TR_DisableDualTLH) || comp->getOptions()->realTimeGC())
@@ -7845,6 +7861,8 @@ J9::X86::TreeEvaluator::VMnewEvaluator(
             {
             useRepInstruction = genZeroInitObject(node, objectSize, elementSize, sizeReg, targetReg, tempReg, segmentReg, scratchReg, cg);
             }
+
+         shouldInitZeroSizedArrayHeader = useRepInstruction;
 
          J9JavaVM * jvm = fej9->getJ9JITConfig()->javaVM;
          if (jvm->lockwordMode == LOCKNURSERY_ALGORITHM_ALL_INHERIT)
