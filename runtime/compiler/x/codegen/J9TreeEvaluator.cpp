@@ -7043,15 +7043,10 @@ static bool genZeroInitObject2(
 
    // set up clazz value here
    TR_OpaqueClassBlock *clazz = NULL;
-   bool isArrayNew = (node->getOpCodeValue() != TR::New);
    comp->canAllocateInline(node, clazz);
-   auto headerSize = isArrayNew ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
+   auto headerSize = node->getOpCodeValue() != TR::New ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
    // If we are using full refs both contiguous and discontiguous array header have the same size, in which case we must adjust header size
    // slightly so that rep stosb can initialize the size field of zero sized arrays appropriately
-   if (!TR::Compiler->om.compressObjectReferences() && isArrayNew)
-      {
-      headerSize -= 8;
-      }
    TR_ASSERT(headerSize >= 4, "Object/Array header must be >= 4.");
    objectSize -= headerSize;
 
@@ -7188,10 +7183,6 @@ static bool genZeroInitObject(
 
    int32_t numSlots = 0;
    int32_t startOfZeroInits = isArrayNew ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
-   if (!TR::Compiler->om.compressObjectReferences() && isArrayNew)
-      {
-      startOfZeroInits -= 8;
-      }
 
    if (comp->target().is64Bit())
       {
