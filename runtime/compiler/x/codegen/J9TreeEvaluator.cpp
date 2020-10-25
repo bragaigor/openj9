@@ -6925,6 +6925,20 @@ static void genInitArrayHeader(
    int32_t arraySizeOffset = fej9->getOffsetOfContiguousArraySizeField();
 
    TR::MemoryReference *arraySizeMR = generateX86MemoryReference(objectReg, arraySizeOffset, cg);
+   // Special handling of zero sized arrays.
+   // Zero length arrays are discontiguous (i.e. they also need the discontiguous length field to be 0) because
+   // they are indistinguishable from non-zero length discontiguous arrays. But instead of explicitly checking
+   // for zero sized arrays we unconditionally store 0 in the third dword of the array object header. That is
+   // safe because the 3rd dword is either array size of a zero sized array or will contain the first elements
+   // of an array:
+   // - Zero sized arrays have the following layout:
+   // - The smallest array possible is a byte array with 1 element which would have a layout:
+   //   #bits per section:         | 32 bits |  32 bits   |     32 bits      | 32 bits |
+   //   zero sized arrays:         |  class  | mustBeZero |       size       | padding |
+   //   smallest contiguous array: |  class  |    size    | 1 byte + padding | padding |
+   //   This also reflects the minimum object size which is 16 bytes.
+   int32_t arrayDiscontiguousSizeOffset = fej9->getOffsetOfDiscontiguousArraySizeField();
+   TR::MemoryReference *arrayDiscontiguousSizeMR = generateX86MemoryReference(objectReg, arrayDiscontiguousSizeOffset, cg);
 
    TR::Compilation *comp = cg->comp();
 
@@ -6937,25 +6951,9 @@ static void genInitArrayHeader(
    if (sizeReg)
       {
       // Variable size
-      // Special handling of zero sized arrays.
-      // Zero length arrays are discontiguous (i.e. they also need the discontiguous length field to be 0) because
-      // they are indistinguishable from non-zero length discontiguous arrays. But instead of explicitly checking
-      // for zero sized arrays we unconditionally store 0 in the third dword of the array object header. That is
-      // safe because the 3rd dword is either array size of a zero sized array or will contain the first elements
-      // of an array:
-      // - Zero sized arrays have the following layout:
-      // - The smallest array possible is a byte array with 1 element which would have a layout:
-      //   #bits per section:         | 32 bits |  32 bits   |     32 bits      | 32 bits |
-      //   zero sized arrays:         |  class  | mustBeZero |       size       | padding |
-      //   smallest contiguous array: |  class  |    size    | 1 byte + padding | padding |
-      //   This also reflects the minimum object size which is 16 bytes.
-      int32_t arrayDiscontiguousSizeOffset = fej9->getOffsetOfDiscontiguousArraySizeField();
-      TR::MemoryReference *arrayDiscontiguousSizeMR = generateX86MemoryReference(objectReg, arrayDiscontiguousSizeOffset, cg);
-
+      //
       if (shouldInitZeroSizedArrayHeader)
-         {
          generateMemImmInstruction(S4MemImm4, node, arrayDiscontiguousSizeMR, 0, cg);
-         }
 
       if (canUseFastInlineAllocation)
          {
@@ -6979,14 +6977,17 @@ static void genInitArrayHeader(
          // Native 64-bit needs to cover the discontiguous size field
          //
          TR_X86OpCodes storeOp = (comp->target().is64Bit() && !comp->useCompressedPointers()) ? S8MemImm4 : S4MemImm4;
-         int32_t instanceSize = node->getFirstChild()->getInt();
+         instanceSize = node->getFirstChild()->getInt();
          generateMemImmInstruction(storeOp, node, arraySizeMR, instanceSize, cg);
          }
       else
          {
-         int32_t instanceSize = node->getFirstChild()->getInt();
+         instanceSize = node->getFirstChild()->getInt();
          generateMemImmInstruction(S4MemImm4, node, arraySizeMR, instanceSize, cg);
          }
+      // Take care of zero sized arrays as they are discontiguous and not contiguous
+      if (shouldInitZeroSizedArrayHeader && (instanceSize == 0))
+         generateMemImmInstruction(S4MemImm4, node, arrayDiscontiguousSizeMR, 0, cg);
       }
 
    bool generateArraylets = comp->generateArraylets();
