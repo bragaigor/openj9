@@ -6933,9 +6933,9 @@ static void genInitArrayHeader(
    // of an array:
    // - Zero sized arrays have the following layout:
    // - The smallest array possible is a byte array with 1 element which would have a layout:
-   //   #bits per section:         | 32 bits |  32 bits   |     32 bits      | 32 bits |
-   //   zero sized arrays:         |  class  | mustBeZero |       size       | padding |
-   //   smallest contiguous array: |  class  |    size    | 1 byte + padding | padding |
+   //   #bits per section (compressed refs): | 32 bits |  32 bits   |     32 bits      | 32 bits |
+   //   zero sized arrays:                   |  class  | mustBeZero |       size       | padding |
+   //   smallest contiguous array:           |  class  |    size    | 1 byte + padding | padding |
    //   This also reflects the minimum object size which is 16 bytes.
    int32_t arrayDiscontiguousSizeOffset = fej9->getOffsetOfDiscontiguousArraySizeField();
    TR::MemoryReference *arrayDiscontiguousSizeMR = generateX86MemoryReference(objectReg, arrayDiscontiguousSizeOffset, cg);
@@ -7189,10 +7189,8 @@ static bool genZeroInitObject(
 
    int32_t numSlots = 0;
    int32_t startOfZeroInits = isArrayNew ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
-   if (!TR::Compiler->om.compressObjectReferences() && isArrayNew)
-      {
-      startOfZeroInits -= 8;
-      }
+   //if (!TR::Compiler->om.compressObjectReferences() && isArrayNew)
+   //   startOfZeroInits -= 8;
 
    if (comp->target().is64Bit())
       {
