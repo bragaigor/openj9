@@ -7053,7 +7053,7 @@ static bool genZeroInitObject2(
    auto headerSize = isArrayNew ? TR::Compiler->om.contiguousArrayHeaderSizeInBytes() : TR::Compiler->om.objectHeaderSizeInBytes();
    // If we are using full refs both contiguous and discontiguous array header have the same size, in which case we must adjust header size
    // slightly so that rep stosb can initialize the size field of zero sized arrays appropriately
-   if (!TR::Compiler->om.compressObjectReferences() && isArrayNew)
+   if (!cg->comp()->target().is32Bit() && !TR::Compiler->om.compressObjectReferences() && isArrayNew)
       {
       headerSize -= 8;
       }
