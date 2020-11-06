@@ -7904,6 +7904,7 @@ J9::X86::TreeEvaluator::VMnewEvaluator(
                generateMemImmInstruction(SMemImm4(), node,
                   generateX86MemoryReference(targetReg, TR::Compiler->om.contiguousArrayHeaderSizeInBytes(), cg),
                   0, cg);
+               shouldInitZeroSizedArrayHeader = false;
                }
             }
 
