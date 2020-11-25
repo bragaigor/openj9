@@ -48,6 +48,8 @@ public:
 
 	virtual void run(MM_EnvironmentBase *envBase)
 	{
+		printf("\t--- #PID: %zu, inside MM_CopyForwardSchemeTask::run about to call _copyForwardScheme->workThreadGarbageCollect...\n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 		_copyForwardScheme->workThreadGarbageCollect(env);
 	}

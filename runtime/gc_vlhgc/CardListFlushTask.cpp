@@ -102,6 +102,9 @@ MM_CardListFlushTask::run(MM_EnvironmentBase *envBase)
 		markMap = env->_cycleState->_markMap;
 	}
 
+	printf("\tTD#: %zu, inisde MM_CardListFlushTask::run... \n", (uintptr_t)pthread_self());
+        fflush(stdout);
+
 	/* this function has knowledge of the collection set, which is only valid during a PGC */
 	Assert_MM_true(MM_CycleState::CT_PARTIAL_GARBAGE_COLLECTION == env->_cycleState->_collectionType);
 	bool gmpIsActive = (NULL != env->_cycleState->_externalCycleState);

@@ -88,6 +88,8 @@
 void
 MM_ParallelWriteOnceCompactTask::run(MM_EnvironmentBase *envBase)
 {
+	printf("\tTD#: %zu, inisde MM_ParallelWriteOnceCompactTask::run... \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 	_compactScheme->compact(env);
 }

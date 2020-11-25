@@ -748,12 +748,16 @@ MM_MemorySubSpaceTarok::replenishAllocationContextFailed(MM_EnvironmentBase *env
 			/* the resize wasn't enough so invoke the collector */
 			allocateDescription->saveObjects(env);
 			allocateDescription->setAllocationType(allocationType);
+			printf("\tTD#: %zu, Inside MM_MemorySubSpaceTarok::replenishAllocationContextFailed about to call garbageCollect 88888888888\n", (uintptr_t)pthread_self());
+                	fflush(stdout);
 			result = collector->garbageCollect(env, this, allocateDescription, J9MMCONSTANT_IMPLICIT_GC_DEFAULT, objectAllocationInterface, replenishingSpace, context);
 			Trc_MM_MemorySubSpaceTarok_replenishAllocationContextFailed_didPerformCollect(env->getLanguageVMThread(), context, (UDATA)allocationType, allocateDescription->getContiguousBytes(), result);
 			allocateDescription->restoreObjects(env);
 			if (NULL == result) {
 				/* we _still_ failed so invoke an aggressive collect */
 				allocateDescription->saveObjects(env);
+				printf("\tTD#: %zu, Inside MM_MemorySubSpaceTarok::replenishAllocationContextFailed about to call garbageCollect 9999999999999999\n", (uintptr_t)pthread_self());
+                        	fflush(stdout);
 				result = collector->garbageCollect(env, this, allocateDescription, J9MMCONSTANT_IMPLICIT_GC_AGGRESSIVE, objectAllocationInterface, replenishingSpace, context);
 				Trc_MM_MemorySubSpaceTarok_replenishAllocationContextFailed_didPerformAggressiveCollect(env->getLanguageVMThread(), context, (UDATA)allocationType, allocateDescription->getContiguousBytes(), result);
 				allocateDescription->restoreObjects(env);

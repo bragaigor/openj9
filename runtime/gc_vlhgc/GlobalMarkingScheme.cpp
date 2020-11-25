@@ -109,12 +109,16 @@ MM_ParallelGlobalMarkTask::mainCleanup(MM_EnvironmentBase *envBase)
 void
 MM_ParallelGlobalMarkTask::run(MM_EnvironmentBase *envBase)
 {
+	printf("\tTD#: %zu, inisde MM_ParallelGlobalMarkTask::run... \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 
 	env->_workStack.prepareForWork(env, (MM_WorkPackets *)(_cycleState->_workPackets));
 
 	switch (_action) {
 	case MARK_ALL:
+		printf("\t\tTD#: %zu, inisde MM_ParallelGlobalMarkTask::run MARK_ALL mark everything!!!!!!. \n", (uintptr_t)pthread_self());
+        	fflush(stdout);
 		_markingScheme->markLiveObjectsInit(env);
 		_markingScheme->markLiveObjectsRoots(env);
 		_markingScheme->markLiveObjectsScan(env);
@@ -122,19 +126,27 @@ MM_ParallelGlobalMarkTask::run(MM_EnvironmentBase *envBase)
 		Assert_MM_false(env->_cycleState->_workPackets->getOverflowFlag());
 		break;
 	case MARK_INIT:
+		printf("\t\tTD#: %zu, inisde MM_ParallelGlobalMarkTask::run MARK_INIT calling markLiveObjectsInit!!!!!!. \n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		_markingScheme->markLiveObjectsInit(env);
 		Assert_MM_false(env->_cycleState->_workPackets->getOverflowFlag());
 		break;
 	case MARK_ROOTS:
+		printf("\t\tTD#: %zu, inisde MM_ParallelGlobalMarkTask::run MARK_ROOTS calling markLiveObjectsRoots!!!!!!. \n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		_markingScheme->markLiveObjectsRoots(env);
 		_markingScheme->resolveOverflow(env);
 		Assert_MM_false(env->_cycleState->_workPackets->getOverflowFlag());
 		break;
 	case MARK_SCAN:
+		printf("\t\tTD#: %zu, inisde MM_ParallelGlobalMarkTask::run MARK_SCAN calling markLiveObjectsScan!!!!!!. \n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		_markingScheme->markLiveObjectsScan(env);
 		Assert_MM_false(env->_cycleState->_workPackets->getOverflowFlag());
 		break;
 	case MARK_COMPLETE:
+		printf("\t\tTD#: %zu, inisde MM_ParallelGlobalMarkTask::run MARK_COMPLETE markLiveObjectsComplete!!!!!!. \n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		_markingScheme->markLiveObjectsComplete(env);
 		Assert_MM_false(env->_cycleState->_workPackets->getOverflowFlag());
 		break;

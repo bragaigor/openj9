@@ -32,6 +32,8 @@
 void
 MM_RealtimeSweepTask::run(MM_EnvironmentBase *envBase)
 {
+	printf("\tTD#: %zu, inisde MM_RealtimeSweepTask::run... \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	MM_EnvironmentRealtime *env = MM_EnvironmentRealtime::getEnvironment(envBase->getOmrVMThread());
 	_sweepScheme->sweep(env);
 }

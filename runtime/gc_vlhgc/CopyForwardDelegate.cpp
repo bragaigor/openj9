@@ -68,6 +68,9 @@ MM_CopyForwardDelegate::performCopyForwardForPartialGC(MM_EnvironmentVLHGC *env)
 	MM_CompactGroupPersistentStats *persistentStats = _extensions->compactGroupPersistentStats;
 	bool result = false;
 
+	printf("\tTD#: %zu, inisde MM_CopyForwardDelegate::performCopyForwardForPartialGC about to call copyForwardCollectionSet \n", (uintptr_t)pthread_self());
+        fflush(stdout);
+
 	MM_CompactGroupPersistentStats::updateStatsBeforeCopyForward(env, persistentStats);
 	result = _breadthFirstCopyForwardScheme->copyForwardCollectionSet(env);
 

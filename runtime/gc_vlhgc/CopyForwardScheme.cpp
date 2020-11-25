@@ -489,6 +489,8 @@ MM_CopyForwardScheme::preProcessRegions(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::postProcessRegions(MM_EnvironmentVLHGC *env)
 {
+	printf("\tTD#: %zu, inisde MM_CopyForwardScheme::postProcessRegions. This is probably completed by main thread? \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
 	MM_HeapRegionDescriptorVLHGC *region = NULL;
 	UDATA survivorSetRegionCount = 0;
@@ -1599,6 +1601,8 @@ bool
 MM_CopyForwardScheme::copyForwardCollectionSet(MM_EnvironmentVLHGC *env)
 {
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
+	printf("\tTD#: %zu, inisde MM_CopyForwardScheme::copyForwardCollectionSet \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 
 	/* stats management */
 	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._startTime = j9time_hires_clock();
@@ -1615,6 +1619,9 @@ MM_CopyForwardScheme::copyForwardCollectionSet(MM_EnvironmentVLHGC *env)
 	}
 	/* Perform any main-specific setup */
 	mainSetupForCopyForward(env);
+
+	printf("\tTD#: %zu, inisde MM_CopyForwardScheme::copyForwardCollectionSet about to create copyForwardTask and create threads to start parallel task\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 
 	/* And perform the copy forward */
 	MM_CopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, env->_cycleState);
@@ -4070,9 +4077,12 @@ MM_CopyForwardScheme::alignMemoryPool(MM_EnvironmentVLHGC *env, MM_MemoryPoolBum
 	return lostToAlignment;
 }
 
+/* Break this into 3 parallel tasks instead of having eveything here!!!!!!! */
 void
 MM_CopyForwardScheme::workThreadGarbageCollect(MM_EnvironmentVLHGC *env)
 {
+	printf("TD#: %zu, inisde MM_CopyForwardScheme::workThreadGarbageCollect doing GC work.......\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	/* GC init (set up per-invocation values) */
 	workerSetupForCopyForward(env);
 
@@ -4148,11 +4158,15 @@ MM_CopyForwardScheme::workThreadGarbageCollect(MM_EnvironmentVLHGC *env)
 	/*  Enable dynamicBreadthFirstScanOrdering depth copying if dynamicBreadthFirstScanOrdering is enabled */
 	env->enableHotFieldDepthCopy();
 	
+	printf("TD#: %zu, inisde MM_CopyForwardScheme::workThreadGarbageCollect, about to call scanRoots!!!!!!!!! 111111111111st PHASE\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	/* scan roots before cleaning the card table since the roots give us more concrete NUMA recommendations */
 	scanRoots(env);
 
 	cleanCardTable(env);
 	
+	printf("TD#: %zu, inisde MM_CopyForwardScheme::workThreadGarbageCollect, about to call completeScan!!!!!!!!! 2222222222222nd PHASE\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	completeScan(env);
 
 	/* TODO: check if abort happened during root scanning/cardTable clearing (and optimize in any other way) */
@@ -4192,6 +4206,8 @@ MM_CopyForwardScheme::workThreadGarbageCollect(MM_EnvironmentVLHGC *env)
 		env->_currentTask->releaseSynchronizedGCThreads(env);
 	}
 
+	printf("TD#: %zu, inisde MM_CopyForwardScheme::workThreadGarbageCollect, about to call rootClearer.scanClearable!!!!! 33333333rd PHASE\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	MM_CopyForwardSchemeRootClearer rootClearer(env, this);
 	rootClearer.setStringTableAsRoot(!isCollectStringConstantsEnabled());
 	rootClearer.scanClearable(env);

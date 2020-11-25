@@ -83,6 +83,9 @@ TgcParallelHeapWalkTask::run(MM_EnvironmentBase *env)
 	MM_TgcExtensions *tgcExtensions = MM_TgcExtensions::getExtensions(extensions);
 	MM_HeapMap *markMap = extensions->previousMarkMap;
 	J9HashTable *hashTable = hashTableNew(env->getPortLibrary(), J9_GET_CALLSITE(), 8*1024, sizeof(ClassTableEntry), sizeof(char *), 0, OMRMEM_CATEGORY_MM, ClassTableEntry::hash, ClassTableEntry::equal, NULL, NULL);
+
+	printf("\tTD#: %zu, inisde TgcParallelHeapWalkTask::run... \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	
 	if (NULL == hashTable) {
 		errorCount += 1;

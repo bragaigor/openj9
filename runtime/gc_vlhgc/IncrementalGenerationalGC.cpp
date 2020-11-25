@@ -191,6 +191,8 @@ MM_IncrementalGenerationalGC::initialize(MM_EnvironmentVLHGC *env)
 		goto error_no_memory;
 	}
 
+	printf("-|_|-|_|- TD#: %zu, inisde MM_IncrementalGenerationalGC::initialize Balanced GC about to call _mainGCThread.initialize ##################\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	if (!_mainGCThread.initialize(this)) {
 		goto error_no_memory;
 	}
@@ -349,6 +351,9 @@ MM_IncrementalGenerationalGC::mainThreadGarbageCollect(MM_EnvironmentBase *envBa
 	J9VMThread 	*vmThread = (J9VMThread *)envBase->getOmrVMThread()->_language_vmthread;
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 
+	printf("-|_|-|_|- TD#: %zu, inisde MM_IncrementalGenerationalGC::mainThreadGarbageCollect ##################\n", (uintptr_t)pthread_self());
+        fflush(stdout);
+
 	/* We might be running in a context of either main or main thread, but either way we must have exclusive access */
 	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
 
@@ -361,12 +366,18 @@ MM_IncrementalGenerationalGC::mainThreadGarbageCollect(MM_EnvironmentBase *envBa
 	
 	switch(env->_cycleState->_collectionType) {
 	case MM_CycleState::CT_PARTIAL_GARBAGE_COLLECTION:
+		printf("-|_|-|_|- TD#: %zu, CT_PARTIAL_GARBAGE_COLLECTION inisde balanced::mainThreadGarbageCollect about to call runPartialGarbageCollect ##################\n", (uintptr_t)pthread_self());
+        	fflush(stdout);
 		runPartialGarbageCollect(env, allocDescription);
 		break;
 	case MM_CycleState::CT_GLOBAL_MARK_PHASE:
+		printf("-|_|-|_|- TD#: %zu, CT_GLOBAL_MARK_PHASE inisde balanced::mainThreadGarbageCollect about to call runGlobalMarkPhaseIncrement ##################\n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		runGlobalMarkPhaseIncrement(env);
 		break;
 	case MM_CycleState::CT_GLOBAL_GARBAGE_COLLECTION:
+		printf("-|_|-|_|- TD#: %zu, CT_GLOBAL_GARBAGE_COLLECTION inisde balanced::mainThreadGarbageCollect about to call runGlobalGarbageCollection ##################\n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		runGlobalGarbageCollection(env, allocDescription);
 		break;
 	default:
@@ -527,6 +538,8 @@ MM_IncrementalGenerationalGC::internalGarbageCollect(MM_EnvironmentBase *env, MM
 		env->_cycleState->_referenceObjectOptions |= MM_CycleState::references_soft_as_weak;
 	}
 
+	printf("-|_|-|_|- TD#: %zu, inisde MM_IncrementalGenerationalGC::internalGarbageCollect about to call _mainGCThread.garbageCollect ##################\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	bool didAttemptCollect = _mainGCThread.garbageCollect(envVLHGC, static_cast<MM_AllocateDescription*>(allocDescription));
 
 	env->_cycleState->_activeSubSpace = NULL;
@@ -795,6 +808,8 @@ MM_IncrementalGenerationalGC::deleteSweepPoolState(MM_EnvironmentBase *env, void
 void
 MM_IncrementalGenerationalGC::taxationEntryPoint(MM_EnvironmentBase *envModron, MM_MemorySubSpace *subspace, MM_AllocateDescription *allocDescription)
 {
+	printf("\tTD#: %zu, Inside MM_IncrementalGenerationalGC::taxationEntryPoint 00000000000000\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	MM_EnvironmentVLHGC *env = (MM_EnvironmentVLHGC *)envModron;
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
@@ -840,6 +855,8 @@ MM_IncrementalGenerationalGC::taxationEntryPoint(MM_EnvironmentBase *envModron, 
 		env->_cycleState->_collectionStatistics = &_partialCollectionStatistics;
 		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.clear();
 
+		printf("\tTD#: %zu, Inside MM_IncrementalGenerationalGC::taxationEntryPoint About to call _mainGCThread.garbageCollect on doPartialGarbageCollection\n", (uintptr_t)pthread_self());
+        	fflush(stdout);
 		bool didAttemptCollect = _mainGCThread.garbageCollect(env, allocDescription);
 		Assert_MM_true(didAttemptCollect);
 
@@ -861,6 +878,8 @@ MM_IncrementalGenerationalGC::taxationEntryPoint(MM_EnvironmentBase *envModron, 
 		env->_cycleState->_referenceObjectOptions = MM_CycleState::references_default;
 		env->_cycleState->_collectionStatistics = &_globalCollectionStatistics;
 
+		printf("\tTD#: %zu, Inside MM_IncrementalGenerationalGC::taxationEntryPoint About to call _mainGCThread.garbageCollect on doGlobalMarkPhase\n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		bool didAttemptCollect = _mainGCThread.garbageCollect(env, allocDescription);
 		Assert_MM_true(didAttemptCollect);
 
@@ -910,6 +929,8 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 		gam->flushAllocationContexts(env);
 	}
 
+	printf("\tTD#: %zu, inisde balanced::runPartialGarbageCollect abbout to call preCollect!!\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	preCollect(env, env->_cycleState->_activeSubSpace, NULL, J9MMCONSTANT_IMPLICIT_GC_DEFAULT);
 
 	/* Perform any main-specific setup */
@@ -922,6 +943,8 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 	if (performExpensiveAssertions) {
 		assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
 	}
+	printf("\tTD#: %zu, inisde balanced::runPartialGarbageCollect about to call partialGarbageCollect!!\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	partialGarbageCollect(env, allocDescription);
 	if (performExpensiveAssertions) {
 		assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
@@ -933,6 +956,8 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 	 */
 
 
+	printf("\tTD#: %zu, inisde balanced::runPartialGarbageCollect about to call postCollect!!\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	postCollect(env, env->_cycleState->_activeSubSpace);
 }
 
@@ -952,6 +977,8 @@ MM_IncrementalGenerationalGC::runGlobalMarkPhaseIncrement(MM_EnvironmentVLHGC *e
 		gam->flushAllocationContexts(env);
 	}
 
+	printf("\tTD#: %zu, inisde balanced::runGlobalMarkPhaseIncrement abbout to call preCollect!!\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	preCollect(env, env->_cycleState->_activeSubSpace, NULL, J9MMCONSTANT_IMPLICIT_GC_DEFAULT);
 	setupBeforeGlobalGC(env, env->_cycleState->_gcCode);
 
@@ -970,6 +997,8 @@ MM_IncrementalGenerationalGC::runGlobalMarkPhaseIncrement(MM_EnvironmentVLHGC *e
 	_extensions->globalVLHGCStats.gcCount += 1;
 
 	if ((_globalMarkPhaseIncrementBytesStillToScan > 0) || (MM_CycleState::state_process_work_packets_after_initial_mark != _persistentGlobalMarkPhaseState._markDelegateState)) {
+		printf("\tTD#: %zu, inisde balanced::runGlobalMarkPhaseIncrement abbout to call globalMarkPhase!!\n", (uintptr_t)pthread_self());
+        	fflush(stdout);
 		globalMarkPhase(env, true);
 	}
 
@@ -986,6 +1015,8 @@ MM_IncrementalGenerationalGC::runGlobalMarkPhaseIncrement(MM_EnvironmentVLHGC *e
 			_markMapManager->reportDeletedObjects(env, _markMapManager->getPartialGCMap(), _markMapManager->getGlobalMarkPhaseMap());
 		}
 
+		printf("\tTD#: %zu, inisde balanced::runGlobalMarkPhaseIncrement MARKING COMPLETE!! About to call declareAllRegionsAsMarked\n", (uintptr_t)pthread_self());
+        	fflush(stdout);
 		/* all objects in all regions are now marked, so change the type of these regions */
 		declareAllRegionsAsMarked(env);
 
@@ -1002,6 +1033,8 @@ MM_IncrementalGenerationalGC::runGlobalMarkPhaseIncrement(MM_EnvironmentVLHGC *e
 	/* If the GMP is no longer running, then we have run the final increment of the cycle. */
 	Assert_MM_true(0 == static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats.getStallTime());
 	if(!isGlobalMarkPhaseRunning()) {
+		printf("\t\tTD#: %zu, inisde balanced::runGlobalMarkPhaseIncrement We're done with GMP cycle!!!!!!!!!!\n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		reportGCCycleFinalIncrementEnding(env);
 		/* TODO: TEMPORARY: This is a temporary call that should be deleted once the new verbose format is in place */
 		/* NOTE: May want to move any tracepoints up into this routine */
@@ -1013,10 +1046,14 @@ MM_IncrementalGenerationalGC::runGlobalMarkPhaseIncrement(MM_EnvironmentVLHGC *e
 	} else {
 		/* TODO: TEMPORARY: This is a temporary call that should be deleted once the new verbose format is in place */
 		/* NOTE: May want to move any tracepoints up into this routine */
+		printf("\t\tTD#: %zu, inisde balanced::runGlobalMarkPhaseIncrement  increment done but cycle still NOT DONE!!!!!!!!!\n", (uintptr_t)pthread_self());
+                fflush(stdout);
 		reportGCIncrementEnd(env);
 		reportGMPIncrementEnd(env);
 	}
 
+	printf("\tTD#: %zu, inisde balanced::runGlobalMarkPhaseIncrement. About to call postCollect\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	postCollect(env, env->_cycleState->_activeSubSpace);
 
 	if (isGlobalMarkPhaseRunning()) {
@@ -1028,6 +1065,8 @@ MM_IncrementalGenerationalGC::runGlobalMarkPhaseIncrement(MM_EnvironmentVLHGC *e
 void
 MM_IncrementalGenerationalGC::runGlobalGarbageCollection(MM_EnvironmentVLHGC *env, MM_AllocateDescription *allocDescription)
 {
+	printf("\tTD#: %zu, inisde balanced::runGlobalGarbageCollection\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	/* If a GMP is already running, then the cycle will be commandeered.  Otherwise, start a new cycle representing the global collection.  */
 	if(isGlobalMarkPhaseRunning()) {
 		reportGMPCycleContinue(env);
@@ -1044,6 +1083,8 @@ MM_IncrementalGenerationalGC::runGlobalGarbageCollection(MM_EnvironmentVLHGC *en
 		gam->flushAllocationContexts(env);
 	}
 
+	printf("\tTD#: %zu, inisde balanced::runGlobalGarbageCollection, about to call setupBeforeGlobalGC\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	/* perform a full GC cycle */
 	setupBeforeGlobalGC(env, env->_cycleState->_gcCode);
 
@@ -1055,6 +1096,8 @@ MM_IncrementalGenerationalGC::runGlobalGarbageCollection(MM_EnvironmentVLHGC *en
 	
 	_interRegionRememberedSet->prepareRegionsForGlobalCollect(env, isGlobalMarkPhaseRunning());
 
+	printf("\tTD#: %zu, inisde balanced::runGlobalGarbageCollection, about to call globalMarkPhase!!!\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	globalMarkPhase(env, false);
 	Assert_MM_false(isGlobalMarkPhaseRunning());
 	if (J9_EVENT_IS_HOOKED(_extensions->omrHookInterface, J9HOOK_MM_OMR_OBJECT_DELETE)) {
@@ -1066,9 +1109,12 @@ MM_IncrementalGenerationalGC::runGlobalGarbageCollection(MM_EnvironmentVLHGC *en
 	env->_cycleState->_markMap = NULL;
 	env->_cycleState->_workPackets = NULL;
 
+	printf("\tTD#: %zu, inisde balanced::runGlobalGarbageCollection. MARKING COMPLETE About to call declareAllRegionsAsMarked and _markMapManager->swapMarkMaps!!\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	/* all objects in all regions are now marked, so change the type of these regions */
 	declareAllRegionsAsMarked(env);
 
+	// TODO: Is it here that GMP updates the markmap of PGC?????????????????
 	/* swap the mark maps since we just finished building the new complete one */
 	_markMapManager->swapMarkMaps();
 
@@ -1077,12 +1123,16 @@ MM_IncrementalGenerationalGC::runGlobalGarbageCollection(MM_EnvironmentVLHGC *en
 	/* we compact everything; compactSelectionGoalInBytes is irrelevant */
 	UDATA compactSelectionGoalInBytes = 0;
 	{
+		printf("\tTD#: %zu, inisde balanced::runGlobalGarbageCollection. About to run sweep phase? bout to call runReclaimCompleteSweep and runReclaimCompleteCompact!!\n", (uintptr_t)pthread_self());
+        	fflush(stdout);
 		MM_CompactGroupPersistentStats *persistentStats = _extensions->compactGroupPersistentStats;
 		MM_CompactGroupPersistentStats::updateStatsBeforeCollect(env, persistentStats);
 		Trc_MM_ReclaimDelegate_runReclaimComplete_Entry(env->getLanguageVMThread(), compactSelectionGoalInBytes, 0);
 		_reclaimDelegate.runReclaimCompleteSweep(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode);
 		_reclaimDelegate.runReclaimCompleteCompact(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode, _markMapManager->getGlobalMarkPhaseMap(), compactSelectionGoalInBytes);
 		Trc_MM_ReclaimDelegate_runReclaimComplete_Exit(env->getLanguageVMThread(), 0);
+		printf("\tTD#: %zu, inisde balanced::runGlobalGarbageCollection. DONE with sweeping!!\n", (uintptr_t)pthread_self());
+                fflush(stdout);
 	}
 
 	UDATA defragmentReclaimableRegions = 0;
@@ -1937,6 +1987,8 @@ uintptr_t
 MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *envBase)
 {
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
+	printf("TD#: %zu, inisde MM_IncrementalGenerationalGC::mainThreadConcurrentCollect --------\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 
 	/* note that we can't check isConcurrentWorkAvailable at this point since another thread could have set _forceConcurrentTermination since the
 	 * main thread calls this outside of the control monitor
@@ -1952,8 +2004,12 @@ MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *en
 	 * flag to true if we want to interrupt it so that the main thread returns to the control mutex in order to receive a
 	 * new GC request.
 	 */
+	printf("TD#: %zu, inisde MM_IncrementalGenerationalGC::mainThreadConcurrentCollect BEFOOOOOORE calling _globalMarkDelegate.performMarkConcurrent --------\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	UDATA bytesConcurrentlyScanned = _globalMarkDelegate.performMarkConcurrent(env, _globalMarkPhaseIncrementBytesStillToScan, &_forceConcurrentTermination);
 	_globalMarkPhaseIncrementBytesStillToScan = MM_Math::saturatingSubtract(_globalMarkPhaseIncrementBytesStillToScan, bytesConcurrentlyScanned);
+	printf("TD#: %zu, inisde MM_IncrementalGenerationalGC::mainThreadConcurrentCollect AAAAAFTER _globalMarkDelegate.performMarkConcurrent call --------\n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	
 	/* Accumulate the mark increment stats into persistent GMP state*/
 	_persistentGlobalMarkPhaseState._vlhgcCycleStats.merge(&static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats);
@@ -2107,6 +2163,9 @@ MM_IncrementalGenerationalGC::exportStats(MM_EnvironmentVLHGC *env, MM_Collectio
 		UDATA allocateEdenTotal = 0;
 		stats->_edenHeapSize = getCurrentEdenSizeInBytes(env);
 
+		stats->_edenHeapSize = _schedulingDelegate.getEdenRegionCount() * regionSize;
+		stats->_edenFreeHeapSize = stats->_edenHeapSize;
+
 		GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
 		MM_HeapRegionDescriptorVLHGC *region = NULL;
 		while (NULL != (region = regionIterator.nextRegion())) {
@@ -2121,7 +2180,7 @@ MM_IncrementalGenerationalGC::exportStats(MM_EnvironmentVLHGC *env, MM_Collectio
 					if (0 == region->getLogicalAge()) {
 						/* region is not collected yet, so getActualFreeMemorySize might not be accurate - using getAllocatableBytes instead */
 						UDATA size = memoryPool->getAllocatableBytes();
-						stats->_edenFreeHeapSize += size;
+						//stats->_edenFreeHeapSize += size;
 						usedMemory = regionSize - size;
 						allocateEdenTotal += regionSize;
 					} else {

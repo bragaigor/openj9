@@ -288,6 +288,11 @@ public:
 	double getTotalRegionConsumptionRate() { return _regionConsumptionRate + _defragmentRegionConsumptionRate; }
 
 	/**
+	 * Return Eden Region count
+	 */
+	UDATA getEdenRegionCount() { return _edenRegionCount; }
+
+	/**
 	 * @return the average survivor set in regions
 	 */
 	double getAverageSurvivorSetRegionCount() { return _averageSurvivorSetRegionCount; }

@@ -282,6 +282,9 @@ MM_ParallelScrubCardTableTask::run(MM_EnvironmentBase *envBase)
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 	MM_GCExtensions *extensions = MM_GCExtensions::getExtensions(env);
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
+
+	printf("\tTD#: %zu, inisde MM_ParallelScrubCardTableTask::run... \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	
 	Trc_MM_ParallelScrubCardTableTask_scrubCardTable_Entry(env->getLanguageVMThread());
 	Assert_MM_true(extensions->tarokEnableCardScrubbing);

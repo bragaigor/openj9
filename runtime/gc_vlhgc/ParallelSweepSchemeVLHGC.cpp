@@ -81,6 +81,8 @@ void
 MM_ParallelSweepVLHGCTask::run(MM_EnvironmentBase *envBase)
 {
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
+	printf("\tTD#: %zu, inisde MM_ParallelSweepVLHGCTask::run about to call _sweepScheme->internalSweep \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	_sweepScheme->internalSweep(env);
 }
 
@@ -854,8 +856,12 @@ MM_ParallelSweepSchemeVLHGC::flushAllFinalChunks(MM_EnvironmentBase *env)
 void
 MM_ParallelSweepSchemeVLHGC::internalSweep(MM_EnvironmentVLHGC *env)
 {
+	printf("\tTD#: %zu, inisde MM_ParallelSweepVLHGCTask::internalSweep \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	/* main thread does initialization */
 	if (env->_currentTask->synchronizeGCThreadsAndReleaseMain(env, UNIQUE_ID)) {
+		printf("\tTD#: %zu, inisde MM_ParallelSweepVLHGCTask::internalSweep main thread does initialization!!!!!!!!!!\n", (uintptr_t)pthread_self());
+        	fflush(stdout);
 		/* Reset all memory pools within the sweep set as a precursor to sweeping. */
 		GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
 		MM_HeapRegionDescriptorVLHGC *region = NULL;
@@ -874,11 +880,15 @@ MM_ParallelSweepSchemeVLHGC::internalSweep(MM_EnvironmentVLHGC *env)
 		env->_currentTask->releaseSynchronizedGCThreads(env);
 	}
 
+	printf("\tTD#: %zu, inisde MM_ParallelSweepVLHGCTask::internalSweep ..all threads now join in to do actual sweep........ \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	/* ..all threads now join in to do actual sweep */
 	sweepAllChunks(env, _chunksPrepared);
 	
 	/* ..and then main thread finishes off by connecting all the chunks */
 	if (env->_currentTask->synchronizeGCThreadsAndReleaseMain(env, UNIQUE_ID)) {
+		printf("\tTD#: %zu, inisde MM_ParallelSweepVLHGCTask::internalSweep ..and then main thread finishes off by connecting all the chunks!!!!\n", (uintptr_t)pthread_self());
+                fflush(stdout);
 #if defined(J9MODRON_TGC_PARALLEL_STATISTICS)
 		U_64 mergeStartTime, mergeEndTime;
 		PORT_ACCESS_FROM_ENVIRONMENT(env);

@@ -36,6 +36,8 @@
 void
 MM_RealtimeMarkTask::run(MM_EnvironmentBase *env)
 {
+	printf("\tTD#: %zu, inisde MM_RealtimeMarkTask::run... \n", (uintptr_t)pthread_self());
+        fflush(stdout);
 	_markingScheme->markLiveObjectsInit(env, false);
 	_markingScheme->markLiveObjectsRoots(env);
 	_markingScheme->markLiveObjectsScan(env);
