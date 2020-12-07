@@ -304,7 +304,7 @@ gcDumpMemorySizes(J9JavaVM *javaVM)
 
 		j9tty_printf(PORTLIB, "  %*s %s", 15, " ", optionDescription);
 
-		for(pageIndex = 0; 0 != pageSizes[pageIndex]; pageIndex++) {
+		for(pageIndex = 0; (0 != pageSizes[pageIndex]) || (J9PORT_VMEM_PAGE_FLAG_NOT_USED_SPECIAL != pageSizes[pageIndex]); pageIndex++) {
 			const char *pageTypeString = NULL;
 			size = pageSizes[pageIndex];
 			qualifiedSize(&size, &qualifier);
