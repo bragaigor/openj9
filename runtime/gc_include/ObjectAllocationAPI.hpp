@@ -83,9 +83,15 @@ private:
 				UDATA const headerSize = J9VMTHREAD_CONTIGUOUS_HEADER_SIZE(currentThread);
 				UDATA const dataSize = ((UDATA)size) * J9ARRAYCLASS_GET_STRIDE(arrayClass);
 				UDATA allocateSize = (dataSize + headerSize + _objectAlignmentInBytes - 1) & ~(UDATA)(_objectAlignmentInBytes - 1);
+#if defined(J9VM_ENV_DATA64)
+				if (allocateSize < J9_GC_MINIMUM_INDEXABLE_OBJECT_SIZE) {
+					allocateSize = J9_GC_MINIMUM_INDEXABLE_OBJECT_SIZE;
+				}
+#else
 				if (allocateSize < J9_GC_MINIMUM_OBJECT_SIZE) {
 					allocateSize = J9_GC_MINIMUM_OBJECT_SIZE;
 				}
+#endif
 
 				/* Allocate the memory */
 				j9object_t objectHeader = NULL;
@@ -172,7 +178,11 @@ private:
 			}
 		} else {
 			/* Zero-length array is discontiguous - assume minimum object size */
+#if defined(J9VM_ENV_DATA64)
+			UDATA allocateSize = J9_GC_MINIMUM_INDEXABLE_OBJECT_SIZE;
+#else
 			UDATA allocateSize = J9_GC_MINIMUM_OBJECT_SIZE;
+#endif
 
 			/* Allocate the memory */
 			j9object_t objectHeader = NULL;
