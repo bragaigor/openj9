@@ -361,6 +361,9 @@ MM_IncrementalGenerationalGC::mainThreadGarbageCollect(MM_EnvironmentBase *envBa
 	
 	switch(env->_cycleState->_collectionType) {
 	case MM_CycleState::CT_PARTIAL_GARBAGE_COLLECTION:
+		// TODO: Need to update to take care of concurrent PGC and call runConcurrentPartialGarbageCollect().
+		//       And create something like MM_Scavenger::scavengeIncremental
+		// TODO Create concurrent states similar to """volatile enum ConcurrentState"""
 		runPartialGarbageCollect(env, allocDescription);
 		break;
 	case MM_CycleState::CT_GLOBAL_MARK_PHASE:

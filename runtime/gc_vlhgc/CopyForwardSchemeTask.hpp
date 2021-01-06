@@ -48,6 +48,8 @@ public:
 
 	virtual void run(MM_EnvironmentBase *envBase)
 	{
+		// TODO: Create machine state similar to MM_ConcurrentScavengeTask::run.
+		// TODO: Create class MM_ConcurrentCopyForwardSchemeTask : public MM_CopyForwardScheme
 		MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 		_copyForwardScheme->workThreadGarbageCollect(env);
 	}
