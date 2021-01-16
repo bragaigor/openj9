@@ -878,6 +878,9 @@ MM_StandardAccessBarrier::preObjectRead(J9VMThread *vmThread, J9Object *srcObjec
 	if (NULL != _extensions->scavenger) {
 		MM_EnvironmentStandard *env = MM_EnvironmentStandard::getEnvironment(vmThread->omrVMThread);
 		Assert_GC_true_with_message(env, !_extensions->scavenger->isObjectInEvacuateMemory((omrobjectptr_t)srcAddress) || _extensions->isScavengerBackOutFlagRaised(), "readObject %llx in Evacuate\n", srcAddress);
+		// Read Barrier Trigger
+		// Gencon CS: It checks Evacuate memory range
+		// For future Cocncurrent PGC we need to make a lookup table check
 		if (_extensions->scavenger->isObjectInEvacuateMemory(object)) {
 			Assert_GC_true_with_message2(env, _extensions->scavenger->isConcurrentCycleInProgress(),
 					"CS not in progress, found a object in Survivor: slot %llx object %llx\n", srcAddress, object);

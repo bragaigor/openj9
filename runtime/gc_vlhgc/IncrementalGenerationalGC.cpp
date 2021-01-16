@@ -343,6 +343,7 @@ MM_IncrementalGenerationalGC::setupBeforeGC(MM_EnvironmentBase *env)
 	
 }
 
+//////////////////////////////
 void
 MM_IncrementalGenerationalGC::mainThreadGarbageCollect(MM_EnvironmentBase *envBase, MM_AllocateDescription *allocDescription, bool initMarkMap, bool rebuildMarkBits)
 {
@@ -1260,6 +1261,7 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 	_extensions->allocationStats.clear();
 }
 
+// Aleks concurrent PGC 2 :: 29:00 min
 void
 MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_EnvironmentVLHGC *env, MM_AllocateDescription *allocDescription)
 {
@@ -1326,6 +1328,7 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 	reportCopyForwardStart(env);
 	U_64 startTimeOfCopyForward = j9time_hires_clock();
 
+	// This is where main GC thread will create the worker threads to perform PGC !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 	bool successful = _copyForwardDelegate.performCopyForwardForPartialGC(env);
 	U_64 endTimeOfCopyForward = j9time_hires_clock();
 

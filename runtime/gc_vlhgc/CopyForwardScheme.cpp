@@ -1617,6 +1617,7 @@ MM_CopyForwardScheme::copyForwardCollectionSet(MM_EnvironmentVLHGC *env)
 	mainSetupForCopyForward(env);
 
 	/* And perform the copy forward */
+	// Main GC thread about to create parallel worker threads!!!!!!!!!!!!
 	MM_CopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, env->_cycleState);
 	_dispatcher->run(env, &copyForwardTask);
 
@@ -4070,6 +4071,9 @@ MM_CopyForwardScheme::alignMemoryPool(MM_EnvironmentVLHGC *env, MM_MemoryPoolBum
 	return lostToAlignment;
 }
 
+// Worker PGC threads will call this function
+// Aleks concurrent PGC 2 ::  31:50 min 
+// Goal for concurrent PGC is to divide this method into 3 STW methods, similar to concurrent Scavenger 
 void
 MM_CopyForwardScheme::workThreadGarbageCollect(MM_EnvironmentVLHGC *env)
 {
@@ -4147,9 +4151,13 @@ MM_CopyForwardScheme::workThreadGarbageCollect(MM_EnvironmentVLHGC *env)
 
 	/*  Enable dynamicBreadthFirstScanOrdering depth copying if dynamicBreadthFirstScanOrdering is enabled */
 	env->enableHotFieldDepthCopy();
+
+	// 1st STW phase: scan roots #############################################################
 	
 	/* scan roots before cleaning the card table since the roots give us more concrete NUMA recommendations */
 	scanRoots(env);
+
+	// 2nd STW phase: clear card tables and complete scan #############################################################
 
 	cleanCardTable(env);
 	
@@ -4191,6 +4199,8 @@ MM_CopyForwardScheme::workThreadGarbageCollect(MM_EnvironmentVLHGC *env)
 		}
 		env->_currentTask->releaseSynchronizedGCThreads(env);
 	}
+
+	// 3rd Complete scan #############################################################
 
 	MM_CopyForwardSchemeRootClearer rootClearer(env, this);
 	rootClearer.setStringTableAsRoot(!isCollectStringConstantsEnabled());
