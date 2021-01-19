@@ -63,6 +63,7 @@
 #include "FinalizableObjectBuffer.hpp"
 #include "FinalizableReferenceBuffer.hpp"
 #include "FinalizeListManager.hpp"
+#include "ForwardedHeader.hpp"
 #include "GlobalAllocationManager.hpp"
 #include "Heap.hpp"
 #include "HeapMapIterator.hpp"
@@ -88,7 +89,6 @@
 #include "ReferenceStats.hpp"
 #include "RegionBasedOverflowVLHGC.hpp"
 #include "RootScanner.hpp"
-#include "ScavengerForwardedHeader.hpp"
 #include "SlotObject.hpp"
 #include "StackSlotValidator.hpp"
 #include "SublistFragment.hpp"
@@ -646,17 +646,18 @@ MM_CopyForwardScheme::isObjectInNurseryMemory(J9Object *objectPtr)
 }
 
 MMINLINE void
-MM_CopyForwardScheme::calculateObjectDetailsForCopy(MM_ScavengerForwardedHeader* forwardedHeader, UDATA *objectCopySizeInBytes, UDATA *objectReserveSizeInBytes, bool *doesObjectNeedHash, bool *isObjectGrowingHashSlot)
+MM_CopyForwardScheme::calculateObjectDetailsForCopy(MM_ForwardedHeader* forwardedHeader, UDATA *objectCopySizeInBytes, UDATA *objectReserveSizeInBytes, bool *doesObjectNeedHash, bool *isObjectGrowingHashSlot)
 {
 	/* NOTE: the size is fetched by hand from the class in the mixed case because a forwarding pointer could have been substituted into the clazz slot.
 	 * the class pointer passed into this routine is guaranteed to have been checked
 	 */
-	J9Class* clazz = forwardedHeader->getPreservedClass();
+	GC_ObjectModel *objectModel = &_extensions->objectModel;
+	J9Class* clazz = objectModel->getPreservedClass(forwardedHeader);
 	UDATA actualObjectCopySizeInBytes = 0;
 	UDATA hashcodeOffset = 0;
 
-	if(forwardedHeader->isIndexable()) {
-		UDATA numberOfElements = (UDATA)forwardedHeader->getPreservedIndexableSize();
+	if(objectModel->isIndexable(objectModel->getPreservedClass(forwardedHeader))) {
+		UDATA numberOfElements = (UDATA)objectModel->getPreservedIndexableSize(forwardedHeader);
 		UDATA dataSizeInBytes = _extensions->indexableObjectModel.getDataSizeInBytes(clazz, numberOfElements);
 		GC_ArrayletObjectModel::ArrayLayout layout = _extensions->indexableObjectModel.getArrayletLayout(clazz, dataSizeInBytes);
 		*objectCopySizeInBytes = _extensions->indexableObjectModel.getSizeInBytesWithHeader(clazz, layout, numberOfElements);
@@ -667,20 +668,21 @@ MM_CopyForwardScheme::calculateObjectDetailsForCopy(MM_ScavengerForwardedHeader*
 	}
 
 	/* IF the object has been hashed and has not been moved, then we need generate hash from the old address */
-	*doesObjectNeedHash = (forwardedHeader->hasBeenHashed() && !forwardedHeader->hasBeenMoved());
+	uintptr_t forwardedHeaderPreservedSlot = forwardedHeader->getPreservedSlot();
+	*doesObjectNeedHash = (objectModel->hasBeenHashed(forwardedHeaderPreservedSlot) && !objectModel->hasBeenMoved(forwardedHeaderPreservedSlot));
 	*isObjectGrowingHashSlot = false;
 	
 	if (hashcodeOffset == *objectCopySizeInBytes) {
-		if (forwardedHeader->hasBeenMoved()) {
+		if (objectModel->hasBeenMoved(forwardedHeaderPreservedSlot)) {
 			*objectCopySizeInBytes += sizeof(UDATA);
-		} else if (forwardedHeader->hasBeenHashed()) {
+		} else if (objectModel->hasBeenHashed(forwardedHeaderPreservedSlot)) {
 			actualObjectCopySizeInBytes += sizeof(UDATA);
 			/* IF the object has been hashed and has not been moved and hashcodeOffset point to end of the object, need to grow size for hash slot  */
 			*isObjectGrowingHashSlot = true;
 		}
 	}
 	actualObjectCopySizeInBytes += *objectCopySizeInBytes;
-	*objectReserveSizeInBytes = _extensions->objectModel.adjustSizeInBytes(actualObjectCopySizeInBytes);
+	*objectReserveSizeInBytes = objectModel->adjustSizeInBytes(actualObjectCopySizeInBytes);
 }
 
 MMINLINE void
@@ -1271,14 +1273,14 @@ MM_CopyForwardScheme::copyAndForward(MM_EnvironmentVLHGC *env, MM_AllocationCont
 
 	if((NULL != objectPtr) && isObjectInEvacuateMemory(objectPtr)) {
 		/* Object needs to be copy and forwarded.  Check if the work has already been done */
-		MM_ScavengerForwardedHeader forwardHeader(objectPtr, _extensions);
-		objectPtr = forwardHeader.getForwardedObject();
+		MM_ForwardedHeader forwardHeader(objectPtr, _extensions->compressObjectReferences());
+		objectPtr = forwardHeader.getForwardedObjectVLHGC();
 		
 		if(NULL != objectPtr) {
 			/* Object has been copied - update the forwarding information and return */
 			*objectPtrIndirect = objectPtr;
 		} else {
-			Assert_GC_true_with_message(env, (UDATA)0x99669966 == forwardHeader.getPreservedClass()->eyecatcher, "Invalid class in objectPtr=%p\n", originalObjectPtr);
+			Assert_GC_true_with_message(env, (UDATA)0x99669966 == _extensions->objectModel.getPreservedClass(&forwardHeader)->eyecatcher, "Invalid class in objectPtr=%p\n", originalObjectPtr);
 
 
 			objectPtr = copy(env, reservingContext, &forwardHeader, leafType);
@@ -1856,8 +1858,8 @@ MM_CopyForwardScheme::updateForwardedPointer(J9Object *objectPtr)
 	J9Object *forwardPtr;
 
 	if(isObjectInEvacuateMemory(objectPtr)) {
-		MM_ScavengerForwardedHeader forwardedHeader(objectPtr, _extensions);
-		forwardPtr = forwardedHeader.getForwardedObject();
+		MM_ForwardedHeader forwardedHeader(objectPtr, _extensions);
+		forwardPtr = forwardedHeader.getForwardedObjectVLHGC();
 		if(forwardPtr != NULL) {
 			return forwardPtr;
 		}
@@ -1873,7 +1875,7 @@ MM_CopyForwardScheme::getContextForHeapAddress(void *address)
 }
 
 J9Object *
-MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *reservingContext, MM_ScavengerForwardedHeader* forwardedHeader, bool leafType)
+MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *reservingContext, MM_ForwardedHeader* forwardedHeader, bool leafType)
 {
 	bool const compressed = env->compressObjectReferences();
 	J9Object *result = NULL;
@@ -1890,7 +1892,7 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 		/* Once threads agreed that abort is in progress or the object is in noEvacuation region, only mark/push should be happening, no attempts even to allocate/copy */
 
 		if (_markMap->atomicSetBit(object)) {
-			Assert_MM_false(MM_ScavengerForwardedHeader(object, _extensions).isForwardedPointer());
+			Assert_MM_false(MM_ForwardedHeader(object, compressed).isForwardedPointer());
 			/* don't need to push leaf object in work stack */
 			if (!leafType) {
 				env->_workStack.push(env, object);
@@ -1906,6 +1908,7 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 		void *newCacheAlloc = NULL;
 		bool doesObjectNeedHash = false;
 		bool isObjectGrowingHashSlot = false;
+		GC_ObjectModel *objectModel = &_extensions->objectModel;
 		
 		/* Object is in the evacuate space but not forwarded. */
 		calculateObjectDetailsForCopy(forwardedHeader, &objectCopySizeInBytes, &objectReserveSizeInBytes, &doesObjectNeedHash, &isObjectGrowingHashSlot);
@@ -1915,7 +1918,7 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 #if defined(J9VM_INTERP_NATIVE_SUPPORT)
 		/* adjust the reserved object's size if we are aligning hot fields and this class has a known hot field */
 		if (_extensions->scavengerAlignHotFields) {
-			UDATA checkDescriptor = forwardedHeader->getPreservedClass()->instanceHotFieldDescription;
+			UDATA checkDescriptor = objectModel->getPreservedClass(forwardedHeader)->instanceHotFieldDescription;
 			/* set the descriptor field if we should be aligning (since assuming that 0 means no is not safe) */
 			if (HOTFIELD_SHOULD_ALIGN(checkDescriptor)) {
 				hotFieldAlignmentDescriptor = checkDescriptor;
@@ -1982,9 +1985,9 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 
 				memcpy((void *)destinationObjectPtr, forwardedHeader->getObject(), objectCopySizeInBytes);
 
-				forwardedHeader->fixupCopiedObject(destinationObjectPtr);
+				forwardedHeader->fixupForwardedObject(destinationObjectPtr);
 
-				if(_extensions->objectModel.isIndexable(destinationObjectPtr)) {
+				if(objectModel->isIndexable(destinationObjectPtr)) {
 					updateInternalLeafPointersAfterCopy((J9IndexableObject *)destinationObjectPtr, (J9IndexableObject *)forwardedHeader->getObject());
 				}
 
@@ -1992,10 +1995,10 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 				 * address into the hashcode slot at hashcode offset.
 				 */
 				if (doesObjectNeedHash) {
-					UDATA hashOffset = forwardedHeader->getHashcodeOffset(_javaVM, destinationObjectPtr);
+					UDATA hashOffset =  objectModel->getHashcodeOffset(destinationObjectPtr);
 					U_32 *hashCodePointer = (U_32*)((U_8*)destinationObjectPtr + hashOffset);
-					*hashCodePointer = forwardedHeader->computeObjectHash((J9VMThread*)env->getLanguageVMThread());
-					_extensions->objectModel.setObjectHasBeenMoved(destinationObjectPtr);
+					*hashCodePointer = objectModel->computeObjectHash(forwardedHeader);
+					objectModel->setObjectHasBeenMoved(destinationObjectPtr);
 				}
 
 				/* Update any mark maps and transfer card table data as appropriate for a successful copy */
@@ -2041,7 +2044,7 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 				}
 #endif /* J9VM_GC_LEAF_BITS */
 				/* depth copy the hot fields of an object if scavenger dynamicBreadthFirstScanOrdering is enabled */
-				depthCopyHotFields(env, forwardedHeader->getPreservedClass(), destinationObjectPtr, reservingContext);
+				depthCopyHotFields(env, objectModel->getPreservedClass(forwardedHeader), destinationObjectPtr, reservingContext);
 			}
 			/* return value for updating the slot */
 			result = destinationObjectPtr;
@@ -2135,7 +2138,7 @@ MM_CopyForwardScheme::copyHotField(MM_EnvironmentVLHGC *env, J9Object *destinati
 	omrobjectptr_t objectPtr = hotFieldObject.readReferenceFromSlot();							
 	if (isObjectInEvacuateMemory(objectPtr)) {
 		/* Hot field needs to be copy and forwarded.  Check if the work has already been done */
-		MM_ScavengerForwardedHeader forwardHeaderHotField(objectPtr, _extensions->compressObjectReferences());
+		MM_ForwardedHeader forwardHeaderHotField(objectPtr, _extensions->compressObjectReferences());
 		if (!forwardHeaderHotField.isForwardedPointer()) {
 			env->_hotFieldCopyDepthCount += 1;
 			copy(env, reservingContext, &forwardHeaderHotField);
@@ -3295,7 +3298,7 @@ MM_CopyForwardScheme::completeScanForAbort(MM_EnvironmentVLHGC *env)
 	do {
 		while (NULL != (objectPtr = (J9Object *)env->_workStack.pop(env))) {
 			do {
-				Assert_MM_false(MM_ScavengerForwardedHeader(objectPtr, _extensions).isForwardedPointer());
+				Assert_MM_false(MM_ForwardedHeader(objectPtr, _extensions->compressObjectReferences()).isForwardedPointer());
 				scanObject(env, reservingContext, objectPtr, SCAN_REASON_PACKET);
 
 				objectPtr = (J9Object *)env->_workStack.popNoWait(env);
@@ -3312,7 +3315,7 @@ MM_CopyForwardScheme::completeScanWorkPacket(MM_EnvironmentVLHGC *env)
 	J9Object *objectPtr = NULL;
 
 	while (NULL != (objectPtr = (J9Object *)env->_workStack.popNoWaitFromCurrentInputPacket(env))) {
-		Assert_MM_false(MM_ScavengerForwardedHeader(objectPtr, _extensions).isForwardedPointer());
+		Assert_MM_false(MM_ForwardedHeader(objectPtr, _extensions->compressObjectReferences()).isForwardedPointer());
 		scanObject(env, reservingContext, objectPtr, SCAN_REASON_PACKET);
 	}
 }
@@ -3403,13 +3406,13 @@ MM_CopyForwardScheme::scanUnfinalizedObjects(MM_EnvironmentVLHGC *env)
 					 * 1. it was copied before unfinalized processing began, or
 					 * 2. it was copied by this thread.
 					 */
-					MM_ScavengerForwardedHeader forwardedHeader(pointer, _extensions);
-					J9Object* forwardedPtr = forwardedHeader.getForwardedObject();
+					MM_ForwardedHeader forwardedHeader(pointer, _extensions->compressObjectReferences());
+					J9Object* forwardedPtr = forwardedHeader.getForwardedObjectVLHGC();
 					if (NULL == forwardedPtr) {
 						if (_markMap->isBitSet(pointer)) {
 							forwardedPtr = pointer;
 						} else {
-							Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
+							Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 							/* TODO:  Use the context for the finalize thread */
 							MM_AllocationContextTarok *reservingContext = getContextForHeapAddress(pointer);
 							forwardedPtr = copy(env, reservingContext, &forwardedHeader);
@@ -3887,12 +3890,12 @@ private:
 		J9Object *objectPtr = (J9Object *)monitor->userData;
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
-			MM_ScavengerForwardedHeader forwardedHeader(objectPtr, _extensions);
-			J9Object *forwardPtr = forwardedHeader.getForwardedObject();
+			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
+			J9Object *forwardPtr = forwardedHeader.getForwardedObjectVLHGC();
 			if(NULL != forwardPtr) {
 				monitor->userData = (UDATA)forwardPtr;
 			} else {
-				Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
+				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				monitorReferenceIterator->removeSlot();
 				MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._monitorReferenceCleared += 1;
 				/* We must call objectMonitorDestroy (as opposed to omrthread_monitor_destroy) when the
@@ -3915,8 +3918,8 @@ private:
 		J9Object *objectPtr = *slotPtr;
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
-			MM_ScavengerForwardedHeader forwardedHeader(objectPtr, _extensions);
-			*slotPtr = forwardedHeader.getForwardedObject();
+			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
+			*slotPtr = forwardedHeader.getForwardedObjectVLHGC();
 		}
 	}
 
@@ -3925,10 +3928,10 @@ private:
 		MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._stringConstantsCandidates += 1;
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
-			MM_ScavengerForwardedHeader forwardedHeader(objectPtr, _extensions);
-			objectPtr = forwardedHeader.getForwardedObject();
+			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
+			objectPtr = forwardedHeader.getForwardedObjectVLHGC();
 			if(NULL == objectPtr) {
-				Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
+				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._stringConstantsCleared += 1;
 				stringTableIterator->removeSlot();
 			} else {
@@ -3943,10 +3946,10 @@ private:
 		env->_copyForwardStats._doubleMappedArrayletsCandidates += 1;
 		if (!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
-			MM_ScavengerForwardedHeader forwardedHeader(objectPtr, _extensions);
-			objectPtr = forwardedHeader.getForwardedObject();
+			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
+			objectPtr = forwardedHeader.getForwardedObjectVLHGC();
 			if (NULL == objectPtr) {
-				Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
+				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				env->_copyForwardStats._doubleMappedArrayletsCleared += 1;
 				OMRPORT_ACCESS_FROM_OMRVM(_omrVM);
 				omrvmem_release_double_mapped_region(identifier->address, identifier->size, identifier);
@@ -3962,8 +3965,8 @@ private:
 		J9Object *objectPtr = *slotPtr;
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
-			MM_ScavengerForwardedHeader forwardedHeader(objectPtr, _extensions);
-			*slotPtr = forwardedHeader.getForwardedObject();
+			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
+			*slotPtr = forwardedHeader.getForwardedObjectVLHGC();
 		}
 	}
 
@@ -3973,8 +3976,8 @@ private:
 		J9Object *objectPtr = *slotPtr;
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
-			MM_ScavengerForwardedHeader forwardedHeader(objectPtr, _extensions);
-			*slotPtr = forwardedHeader.getForwardedObject();
+			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
+			*slotPtr = forwardedHeader.getForwardedObjectVLHGC();
 		}
 	}
 #endif /* J9VM_OPT_JVMTI */
@@ -4483,10 +4486,10 @@ MM_CopyForwardScheme::verifyCopyForwardResult(MM_EnvironmentVLHGC *env)
 			/* the spine must be marked if it was copied as a live object or if we aborted the copy-forward */
 			/* otherwise, it must not be forwarded (since that would imply that the spine survived but the pointer wasn't updated) */
 			if(!_markMap->isBitSet(spineObject)) {
-				MM_ScavengerForwardedHeader forwardedSpine(spineObject, _extensions);
+				MM_ForwardedHeader forwardedSpine(spineObject, _extensions->compressObjectReferences());
 				if (forwardedSpine.isForwardedPointer()) {
 					PORT_ACCESS_FROM_ENVIRONMENT(env);
-					j9tty_printf(PORTLIB, "Spine pointer is not marked and is forwarded (leaf region's pointer to spine not updated)!  Region %p Spine %p (should be %p)\n", region, spineObject, forwardedSpine.getForwardedObject());
+					j9tty_printf(PORTLIB, "Spine pointer is not marked and is forwarded (leaf region's pointer to spine not updated)!  Region %p Spine %p (should be %p)\n", region, spineObject, forwardedSpine.getForwardedObjectVLHGC());
 					verifyDumpObjectDetails(env, "spineObject", spineObject);
 					Assert_MM_unreachable();
 				}
@@ -4996,6 +4999,7 @@ MM_CopyForwardScheme::processReferenceList(MM_EnvironmentVLHGC *env, MM_HeapRegi
 	const UDATA maxObjects = _regionManager->getRegionSize();
 	UDATA objectsVisited = 0;
 	GC_FinalizableReferenceBuffer buffer(_extensions);
+	bool const compressed = env->compressObjectReferences();
 
 	J9Object* referenceObj = headOfList;
 	while (NULL != referenceObj) {
@@ -5015,12 +5019,12 @@ MM_CopyForwardScheme::processReferenceList(MM_EnvironmentVLHGC *env, MM_HeapRegi
 			UDATA referenceObjectType = J9CLASS_FLAGS(J9GC_J9OBJECT_CLAZZ(referenceObj, env)) & J9AccClassReferenceMask;
 			
 			/* update the referent if it's been forwarded */
-			MM_ScavengerForwardedHeader forwardedReferent(referent, _extensions);
+			MM_ForwardedHeader forwardedReferent(referent, compressed);
 			if (forwardedReferent.isForwardedPointer()) {
-				referent = forwardedReferent.getForwardedObject();
+				referent = forwardedReferent.getForwardedObjectVLHGC();
 				referentSlotObject.writeReferenceToSlot(referent);
 			} else {
-				Assert_MM_mustBeClass(forwardedReferent.getPreservedClass());
+				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedReferent));
 			}
 			
 			if (isLiveObject(referent)) {
@@ -5221,9 +5225,9 @@ MM_CopyForwardScheme::scanFinalizableObjects(MM_EnvironmentVLHGC *env)
 			j9object_t next = NULL;
 			if(!isLiveObject(referenceObject)) {
 				Assert_MM_true(isObjectInEvacuateMemory(referenceObject));
-				MM_ScavengerForwardedHeader forwardedHeader(referenceObject, _extensions);
+				MM_ForwardedHeader forwardedHeader(referenceObject, _extensions->compressObjectReferences());
 				if (!forwardedHeader.isForwardedPointer()) {
-					Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
+					Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 					next = _extensions->accessBarrier->getReferenceLink(referenceObject);
 
 					MM_AllocationContextTarok *reservingContext = getContextForHeapAddress(referenceObject);
@@ -5236,7 +5240,7 @@ MM_CopyForwardScheme::scanFinalizableObjects(MM_EnvironmentVLHGC *env)
 						referenceBuffer.add(env, copyObject);
 					}
 				} else {
-					J9Object *forwardedPtr =  forwardedHeader.getForwardedObject();
+					J9Object *forwardedPtr =  forwardedHeader.getForwardedObjectVLHGC();
 					Assert_MM_true(NULL != forwardedPtr);
 					next = _extensions->accessBarrier->getReferenceLink(forwardedPtr);
 					referenceBuffer.add(env, forwardedPtr);
@@ -5262,9 +5266,9 @@ MM_CopyForwardScheme::scanFinalizableList(MM_EnvironmentVLHGC *env, j9object_t h
 
 		if(!isLiveObject(headObject)) {
 			Assert_MM_true(isObjectInEvacuateMemory(headObject));
-			MM_ScavengerForwardedHeader forwardedHeader(headObject, _extensions);
+			MM_ForwardedHeader forwardedHeader(headObject, _extensions->compressObjectReferences());
 			if (!forwardedHeader.isForwardedPointer()) {
-				Assert_MM_mustBeClass(forwardedHeader.getPreservedClass());
+				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				next = _extensions->accessBarrier->getFinalizeLink(headObject);
 
 				MM_AllocationContextTarok *reservingContext = getContextForHeapAddress(headObject);
@@ -5277,7 +5281,7 @@ MM_CopyForwardScheme::scanFinalizableList(MM_EnvironmentVLHGC *env, j9object_t h
 					objectBuffer.add(env, copyObject);
 				}
 			} else {
-				J9Object *forwardedPtr =  forwardedHeader.getForwardedObject();
+				J9Object *forwardedPtr =  forwardedHeader.getForwardedObjectVLHGC();
 				Assert_MM_true(NULL != forwardedPtr);
 				next = _extensions->accessBarrier->getFinalizeLink(forwardedPtr);
 				objectBuffer.add(env, forwardedPtr);

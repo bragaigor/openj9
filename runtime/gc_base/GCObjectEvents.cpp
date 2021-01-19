@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 1991, 2019 IBM Corp. and others
+ * Copyright (c) 1991, 2021 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -31,18 +31,19 @@
 #include "mmomrhook_internal.h"
 
 #include "EnvironmentBase.hpp"
+#include "ForwardedHeader.hpp"
 #include "HeapMap.hpp"
 #include "MemorySpace.hpp"
 #include "MemorySubSpace.hpp"
 #include "MemorySubSpaceSemiSpace.hpp"
 #include "MemorySubSpaceRegionIterator.hpp"
+#include "ObjectAccessBarrier.hpp"
 #include "ObjectHeapBufferedIterator.hpp"
 #include "ObjectModel.hpp"
 #include "HeapRegionDescriptor.hpp"
 #include "HeapRegionIterator.hpp"
 #include "GCExtensions.hpp"
 #include "HeapRegionManager.hpp"
-#include "ScavengerForwardedHeader.hpp"
 
 void
 globalGCReportObjectEvents(MM_EnvironmentBase *env, MM_HeapMap *markMap)
@@ -93,9 +94,9 @@ localGCReportObjectEvents(MM_EnvironmentBase *env, MM_MemorySubSpaceSemiSpace *m
 				if (extensions->objectModel.isDeadObject(objectPtr)) {
 					objectPtr = (J9Object *)((U_8 *)objectPtr + extensions->objectModel.getSizeInBytesDeadObject(objectPtr));
 				} else {
-					MM_ScavengerForwardedHeader forwardHeader(objectPtr, extensions);
+					MM_ForwardedHeader forwardHeader(objectPtr, extensions);
 					if (forwardHeader.isForwardedPointer()) {
-						J9Object *forwardPtr = forwardHeader.getForwardedObject();
+						J9Object *forwardPtr = forwardHeader.getForwardedObjectVLHGC();
 						Assert_MM_true(NULL != forwardPtr);
 						TRIGGER_J9HOOK_MM_OMR_OBJECT_RENAME(env->getExtensions()->omrHookInterface, vmThread, objectPtr, forwardPtr);
 						objectPtr = (J9Object *)((U_8 *)objectPtr + extensions->objectModel.getConsumedSizeInBytesWithHeaderBeforeMove(forwardPtr));
