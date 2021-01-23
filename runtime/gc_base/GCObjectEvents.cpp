@@ -96,7 +96,7 @@ localGCReportObjectEvents(MM_EnvironmentBase *env, MM_MemorySubSpaceSemiSpace *m
 				} else {
 					MM_ForwardedHeader forwardHeader(objectPtr, extensions);
 					if (forwardHeader.isForwardedPointer()) {
-						J9Object *forwardPtr = forwardHeader.getForwardedObjectVLHGC();
+						J9Object *forwardPtr = forwardHeader.getForwardedObject();
 						Assert_MM_true(NULL != forwardPtr);
 						TRIGGER_J9HOOK_MM_OMR_OBJECT_RENAME(env->getExtensions()->omrHookInterface, vmThread, objectPtr, forwardPtr);
 						objectPtr = (J9Object *)((U_8 *)objectPtr + extensions->objectModel.getConsumedSizeInBytesWithHeaderBeforeMove(forwardPtr));

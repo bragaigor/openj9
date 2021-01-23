@@ -614,7 +614,7 @@ bool
 MM_VLHGCAccessBarrier::preWeakRootSlotRead(J9VMThread *vmThread, j9object_t *srcAddress)
 {
 	MM_ForwardedHeader forwardedHeader(*srcAddress, compressObjectReferences());
-	J9Object* forwardedPtr = forwardedHeader.getForwardedObjectVLHGC();
+	J9Object* forwardedPtr = forwardedHeader.getForwardedObject();
 	if (NULL != forwardedPtr) {
 		*srcAddress = forwardedPtr;
 	}
@@ -626,7 +626,7 @@ bool
 MM_VLHGCAccessBarrier::preWeakRootSlotRead(J9JavaVM *vm, j9object_t *srcAddress)
 {
 	MM_ForwardedHeader forwardedHeader(*srcAddress, compressObjectReferences());
-	J9Object* forwardedPtr = forwardedHeader.getForwardedObjectVLHGC();
+	J9Object* forwardedPtr = forwardedHeader.getForwardedObject();
 	if (NULL != forwardedPtr) {
 		*srcAddress = forwardedPtr;
 	}

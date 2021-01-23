@@ -468,9 +468,8 @@ private:
 
 	/**
 	 * @param doesObjectNeedHash[out]		True, if object need to store hashcode in hashslot
-	 * @param isObjectGrowingHashSlot[out]	True, if object need to grow size for hashslot
 	 */
-	MMINLINE void calculateObjectDetailsForCopy(MM_ForwardedHeader* forwardedHeader, UDATA *objectCopySizeInBytes, UDATA *objectReserveSizeInBytes, bool *doesObjectNeedHash, bool *isObjectGrowingHashSlot);
+	MMINLINE void calculateObjectDetailsForCopy(MM_ForwardedHeader* forwardedHeader, UDATA *objectCopySizeInBytes, UDATA *objectReserveSizeInBytes, bool *doesObjectNeedHash);
 
 	/**
 	 * Remove any remaining regions from the reserved allocation list.

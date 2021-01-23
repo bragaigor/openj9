@@ -288,7 +288,7 @@ GC_CheckEngine::checkJ9ObjectPointer(J9JavaVM *javaVM, J9Object *objectPtr, J9Ob
 			// TODO: do some safety checks first -- is there enough room in the segment?
 			MM_ForwardedHeader forwardedHeader(objectPtr, extensions->compressObjectReferences());
 			if (forwardedHeader.isForwardedPointer()) {
-				*newObjectPtr = forwardedHeader.getForwardedObjectVLHGC();
+				*newObjectPtr = forwardedHeader.getForwardedObject();
 				
 				if (_cycle->getMiscFlags() & J9MODRON_GCCHK_VERBOSE) {
 					PORT_ACCESS_FROM_PORT(_portLibrary);

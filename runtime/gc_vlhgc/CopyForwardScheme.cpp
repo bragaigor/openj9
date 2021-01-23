@@ -646,7 +646,7 @@ MM_CopyForwardScheme::isObjectInNurseryMemory(J9Object *objectPtr)
 }
 
 MMINLINE void
-MM_CopyForwardScheme::calculateObjectDetailsForCopy(MM_ForwardedHeader* forwardedHeader, UDATA *objectCopySizeInBytes, UDATA *objectReserveSizeInBytes, bool *doesObjectNeedHash, bool *isObjectGrowingHashSlot)
+MM_CopyForwardScheme::calculateObjectDetailsForCopy(MM_ForwardedHeader* forwardedHeader, UDATA *objectCopySizeInBytes, UDATA *objectReserveSizeInBytes, bool *doesObjectNeedHash)
 {
 	/* NOTE: the size is fetched by hand from the class in the mixed case because a forwarding pointer could have been substituted into the clazz slot.
 	 * the class pointer passed into this routine is guaranteed to have been checked
@@ -670,15 +670,12 @@ MM_CopyForwardScheme::calculateObjectDetailsForCopy(MM_ForwardedHeader* forwarde
 	/* IF the object has been hashed and has not been moved, then we need generate hash from the old address */
 	uintptr_t forwardedHeaderPreservedSlot = forwardedHeader->getPreservedSlot();
 	*doesObjectNeedHash = (objectModel->hasBeenHashed(forwardedHeaderPreservedSlot) && !objectModel->hasBeenMoved(forwardedHeaderPreservedSlot));
-	*isObjectGrowingHashSlot = false;
 	
 	if (hashcodeOffset == *objectCopySizeInBytes) {
 		if (objectModel->hasBeenMoved(forwardedHeaderPreservedSlot)) {
 			*objectCopySizeInBytes += sizeof(UDATA);
 		} else if (objectModel->hasBeenHashed(forwardedHeaderPreservedSlot)) {
 			actualObjectCopySizeInBytes += sizeof(UDATA);
-			/* IF the object has been hashed and has not been moved and hashcodeOffset point to end of the object, need to grow size for hash slot  */
-			*isObjectGrowingHashSlot = true;
 		}
 	}
 	actualObjectCopySizeInBytes += *objectCopySizeInBytes;
@@ -1274,7 +1271,7 @@ MM_CopyForwardScheme::copyAndForward(MM_EnvironmentVLHGC *env, MM_AllocationCont
 	if((NULL != objectPtr) && isObjectInEvacuateMemory(objectPtr)) {
 		/* Object needs to be copy and forwarded.  Check if the work has already been done */
 		MM_ForwardedHeader forwardHeader(objectPtr, _extensions->compressObjectReferences());
-		objectPtr = forwardHeader.getForwardedObjectVLHGC();
+		objectPtr = forwardHeader.getForwardedObject();
 		
 		if(NULL != objectPtr) {
 			/* Object has been copied - update the forwarding information and return */
@@ -1859,7 +1856,7 @@ MM_CopyForwardScheme::updateForwardedPointer(J9Object *objectPtr)
 
 	if(isObjectInEvacuateMemory(objectPtr)) {
 		MM_ForwardedHeader forwardedHeader(objectPtr, _extensions);
-		forwardPtr = forwardedHeader.getForwardedObjectVLHGC();
+		forwardPtr = forwardedHeader.getForwardedObject();
 		if(forwardPtr != NULL) {
 			return forwardPtr;
 		}
@@ -1907,11 +1904,10 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 		MM_CopyScanCacheVLHGC *copyCache = NULL;
 		void *newCacheAlloc = NULL;
 		bool doesObjectNeedHash = false;
-		bool isObjectGrowingHashSlot = false;
 		GC_ObjectModel *objectModel = &_extensions->objectModel;
 		
 		/* Object is in the evacuate space but not forwarded. */
-		calculateObjectDetailsForCopy(forwardedHeader, &objectCopySizeInBytes, &objectReserveSizeInBytes, &doesObjectNeedHash, &isObjectGrowingHashSlot);
+		calculateObjectDetailsForCopy(forwardedHeader, &objectCopySizeInBytes, &objectReserveSizeInBytes, &doesObjectNeedHash);
 
 		Assert_MM_objectAligned(env, objectReserveSizeInBytes);
 
@@ -1971,7 +1967,7 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 
 			/* Try to swap the forwarding pointer to the destination copy array into the source object */
 			J9Object* originalDestinationObjectPtr = destinationObjectPtr;
-			destinationObjectPtr = forwardedHeader->setForwardedObjectGrowing(destinationObjectPtr, isObjectGrowingHashSlot);
+			destinationObjectPtr = forwardedHeader->setForwardedObject(destinationObjectPtr);
 			Assert_MM_true(NULL != destinationObjectPtr);
 			if (destinationObjectPtr == originalDestinationObjectPtr) {
 				/* Succeeded in forwarding the object - copy and adjust the age value */
@@ -1995,7 +1991,7 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 				 * address into the hashcode slot at hashcode offset.
 				 */
 				if (doesObjectNeedHash) {
-					UDATA hashOffset =  objectModel->getHashcodeOffset(destinationObjectPtr);
+					UDATA hashOffset = objectModel->getHashcodeOffset(destinationObjectPtr);
 					U_32 *hashCodePointer = (U_32*)((U_8*)destinationObjectPtr + hashOffset);
 					*hashCodePointer = objectModel->computeObjectHash(forwardedHeader);
 					objectModel->setObjectHasBeenMoved(destinationObjectPtr);
@@ -3407,7 +3403,7 @@ MM_CopyForwardScheme::scanUnfinalizedObjects(MM_EnvironmentVLHGC *env)
 					 * 2. it was copied by this thread.
 					 */
 					MM_ForwardedHeader forwardedHeader(pointer, _extensions->compressObjectReferences());
-					J9Object* forwardedPtr = forwardedHeader.getForwardedObjectVLHGC();
+					J9Object* forwardedPtr = forwardedHeader.getForwardedObject();
 					if (NULL == forwardedPtr) {
 						if (_markMap->isBitSet(pointer)) {
 							forwardedPtr = pointer;
@@ -3891,7 +3887,7 @@ private:
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
-			J9Object *forwardPtr = forwardedHeader.getForwardedObjectVLHGC();
+			J9Object *forwardPtr = forwardedHeader.getForwardedObject();
 			if(NULL != forwardPtr) {
 				monitor->userData = (UDATA)forwardPtr;
 			} else {
@@ -3919,7 +3915,7 @@ private:
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
-			*slotPtr = forwardedHeader.getForwardedObjectVLHGC();
+			*slotPtr = forwardedHeader.getForwardedObject();
 		}
 	}
 
@@ -3929,7 +3925,7 @@ private:
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
-			objectPtr = forwardedHeader.getForwardedObjectVLHGC();
+			objectPtr = forwardedHeader.getForwardedObject();
 			if(NULL == objectPtr) {
 				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				MM_EnvironmentVLHGC::getEnvironment(_env)->_copyForwardStats._stringConstantsCleared += 1;
@@ -3947,7 +3943,7 @@ private:
 		if (!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
-			objectPtr = forwardedHeader.getForwardedObjectVLHGC();
+			objectPtr = forwardedHeader.getForwardedObject();
 			if (NULL == objectPtr) {
 				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				env->_copyForwardStats._doubleMappedArrayletsCleared += 1;
@@ -3966,7 +3962,7 @@ private:
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
-			*slotPtr = forwardedHeader.getForwardedObjectVLHGC();
+			*slotPtr = forwardedHeader.getForwardedObject();
 		}
 	}
 
@@ -3977,7 +3973,7 @@ private:
 		if(!_copyForwardScheme->isLiveObject(objectPtr)) {
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
-			*slotPtr = forwardedHeader.getForwardedObjectVLHGC();
+			*slotPtr = forwardedHeader.getForwardedObject();
 		}
 	}
 #endif /* J9VM_OPT_JVMTI */
@@ -4489,7 +4485,7 @@ MM_CopyForwardScheme::verifyCopyForwardResult(MM_EnvironmentVLHGC *env)
 				MM_ForwardedHeader forwardedSpine(spineObject, _extensions->compressObjectReferences());
 				if (forwardedSpine.isForwardedPointer()) {
 					PORT_ACCESS_FROM_ENVIRONMENT(env);
-					j9tty_printf(PORTLIB, "Spine pointer is not marked and is forwarded (leaf region's pointer to spine not updated)!  Region %p Spine %p (should be %p)\n", region, spineObject, forwardedSpine.getForwardedObjectVLHGC());
+					j9tty_printf(PORTLIB, "Spine pointer is not marked and is forwarded (leaf region's pointer to spine not updated)!  Region %p Spine %p (should be %p)\n", region, spineObject, forwardedSpine.getForwardedObject());
 					verifyDumpObjectDetails(env, "spineObject", spineObject);
 					Assert_MM_unreachable();
 				}
@@ -5021,7 +5017,7 @@ MM_CopyForwardScheme::processReferenceList(MM_EnvironmentVLHGC *env, MM_HeapRegi
 			/* update the referent if it's been forwarded */
 			MM_ForwardedHeader forwardedReferent(referent, compressed);
 			if (forwardedReferent.isForwardedPointer()) {
-				referent = forwardedReferent.getForwardedObjectVLHGC();
+				referent = forwardedReferent.getForwardedObject();
 				referentSlotObject.writeReferenceToSlot(referent);
 			} else {
 				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedReferent));
@@ -5240,7 +5236,7 @@ MM_CopyForwardScheme::scanFinalizableObjects(MM_EnvironmentVLHGC *env)
 						referenceBuffer.add(env, copyObject);
 					}
 				} else {
-					J9Object *forwardedPtr =  forwardedHeader.getForwardedObjectVLHGC();
+					J9Object *forwardedPtr =  forwardedHeader.getForwardedObject();
 					Assert_MM_true(NULL != forwardedPtr);
 					next = _extensions->accessBarrier->getReferenceLink(forwardedPtr);
 					referenceBuffer.add(env, forwardedPtr);
@@ -5281,7 +5277,7 @@ MM_CopyForwardScheme::scanFinalizableList(MM_EnvironmentVLHGC *env, j9object_t h
 					objectBuffer.add(env, copyObject);
 				}
 			} else {
-				J9Object *forwardedPtr =  forwardedHeader.getForwardedObjectVLHGC();
+				J9Object *forwardedPtr =  forwardedHeader.getForwardedObject();
 				Assert_MM_true(NULL != forwardedPtr);
 				next = _extensions->accessBarrier->getFinalizeLink(forwardedPtr);
 				objectBuffer.add(env, forwardedPtr);
