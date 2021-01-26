@@ -32,12 +32,12 @@
 
 #include "EnvironmentBase.hpp"
 #include "ForwardedHeader.hpp"
+#include "Heap.hpp"
 #include "HeapMap.hpp"
 #include "MemorySpace.hpp"
 #include "MemorySubSpace.hpp"
 #include "MemorySubSpaceSemiSpace.hpp"
 #include "MemorySubSpaceRegionIterator.hpp"
-#include "ObjectAccessBarrier.hpp"
 #include "ObjectHeapBufferedIterator.hpp"
 #include "ObjectModel.hpp"
 #include "HeapRegionDescriptor.hpp"
@@ -88,7 +88,7 @@ localGCReportObjectEvents(MM_EnvironmentBase *env, MM_MemorySubSpaceSemiSpace *m
 		if (memorySubSpaceNew->isObjectInEvacuateMemory(objectPtr)) {
 			MM_MemorySubSpace *evacuateMemorySubSpace = evacuateRegion->getSubSpace();
 			/* Use the object model helper to test for holes,
-			 * otherwise use ScavengerForwardedHeader to test for forwarded objects.
+			 * otherwise use ForwardedHeader to test for forwarded objects.
 			 */
 			while(objectPtr < (J9Object *)evacuateRegion->getHighAddress()) {
 				if (extensions->objectModel.isDeadObject(objectPtr)) {

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2017, 2019 IBM Corp. and others
+ * Copyright (c) 2017, 2021 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -35,7 +35,6 @@
 #include "MemoryPoolHybrid.hpp"
 #include "MemoryPoolSplitAddressOrderedList.hpp"
 #include "RealtimeMarkingScheme.hpp"
-#include "ScavengerForwardedHeader.hpp"
 #include "StringTable.hpp"
 #include "SweepPoolManager.hpp"
 #include "SweepPoolManagerVLHGC.hpp"
@@ -72,7 +71,6 @@ GC_DdrDebugLink(MM_MemoryPoolAddressOrderedList)
 GC_DdrDebugLink(MM_MemoryPoolHybrid)
 GC_DdrDebugLink(MM_MemoryPoolSplitAddressOrderedList)
 GC_DdrDebugLink(MM_RealtimeMarkingScheme)
-GC_DdrDebugLink(MM_ScavengerForwardedHeader)
 GC_DdrDebugLink(MM_StringTable)
 GC_DdrDebugLink(MM_SweepPoolManagerVLHGC)
 

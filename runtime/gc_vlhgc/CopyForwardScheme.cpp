@@ -668,7 +668,7 @@ MM_CopyForwardScheme::calculateObjectDetailsForCopy(MM_ForwardedHeader* forwarde
 	}
 
 	/* IF the object has been hashed and has not been moved, then we need generate hash from the old address */
-	uintptr_t forwardedHeaderPreservedSlot = forwardedHeader->getPreservedSlot();
+	UDATA forwardedHeaderPreservedSlot = forwardedHeader->getPreservedSlot();
 	*doesObjectNeedHash = (objectModel->hasBeenHashed(forwardedHeaderPreservedSlot) && !objectModel->hasBeenMoved(forwardedHeaderPreservedSlot));
 	
 	if (hashcodeOffset == *objectCopySizeInBytes) {
