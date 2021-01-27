@@ -26,6 +26,7 @@
 #include "ConcurrentCardTable.hpp"
 #include "CopyScanCacheStandard.hpp"
 #include "FreeHeapRegionList.hpp"
+#include "ForwardedHeader.hpp"
 #include "GCExtensions.hpp"
 #include "HeapIteratorAPI.h"
 #include "HeapMap.hpp"
@@ -60,6 +61,7 @@ GC_DdrDebugLink(MM_AllocationCategory)
 GC_DdrDebugLink(MM_ConcurrentCardTable)
 GC_DdrDebugLink(MM_CopyScanCacheStandard)
 GC_DdrDebugLink(MM_FreeHeapRegionList)
+GC_DdrDebugLink(MM_ForwardedHeader)
 GC_DdrDebugLink(MM_GCExtensions)
 GC_DdrDebugLink(MM_HeapLinkedFreeHeader)
 GC_DdrDebugLink(MM_HeapMap)
