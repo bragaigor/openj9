@@ -1939,6 +1939,8 @@ MM_IncrementalGenerationalGC::preConcurrentInitializeStatsAndReport(MM_Environme
 			stats);
 }
 
+// TODO: This need to change as well!!!!
+// Use _copyForwardDelegate to call something in delegate to only then copy in copyForwardScheme
 uintptr_t
 MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *envBase)
 {

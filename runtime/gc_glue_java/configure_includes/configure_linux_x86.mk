@@ -26,7 +26,8 @@ CONFIGURE_ARGS += \
 	--enable-debug \
 	--enable-OMR_THR_THREE_TIER_LOCKING \
 	--enable-OMR_THR_YIELD_ALG \
-	--enable-OMR_THR_SPIN_WAKE_CONTROL
+	--enable-OMR_THR_SPIN_WAKE_CONTROL \
+	--enable-OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD
 
 ifeq (linux_x86-64_cmprssptrs, $(SPEC))
 	CONFIGURE_ARGS += \
