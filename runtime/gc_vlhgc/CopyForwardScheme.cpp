@@ -172,6 +172,9 @@ MM_CopyForwardScheme::MM_CopyForwardScheme(MM_EnvironmentVLHGC *env, MM_HeapRegi
 	, _failedToExpand(false)
 	, _shouldScanFinalizableObjects(false)
 	, _objectAlignmentInBytes(env->getObjectAlignmentInBytes())
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+        , _mainGCThread(env)
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 {
 	_typeId = __FUNCTION__;
 }
@@ -5473,7 +5476,7 @@ MM_CopyForwardScheme::copyForwardComplete(MM_EnvironmentVLHGC *env)
 	Assert_MM_true(concurrent_phase_complete == _concurrentPhase);
 
 	MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, MM_ConcurrentCopyForwardSchemeTask::COPY_FORWARD_COMPLETE, env->_cycleState);
-	_dispatcher->run(env, &scavengeTask);
+	_dispatcher->run(env, &copyForwardTask);
 
 	return false;
 }
@@ -5539,7 +5542,7 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 
 		case concurrent_phase_complete:
 		{
-			scavengeComplete(env);
+			copyForwardComplete(env);
 
 			result = true;
 			_concurrentPhase = concurrent_phase_idle;

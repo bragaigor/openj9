@@ -38,6 +38,9 @@
 #include "EnvironmentVLHGC.hpp"
 #include "GCExtensions.hpp"
 #include "ModronTypes.hpp"
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+#include "MainGCThread.hpp"
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 
 class GC_SlotObject;
 class MM_AllocationContextTarok;
