@@ -400,7 +400,7 @@ public:
 	 * @param env[in] the current thread
 	 */
 	virtual void preMainGCThreadInitialize(MM_EnvironmentBase *env);
-	
+
 	virtual MM_ConcurrentPhaseStatsBase *getConcurrentPhaseStats() { return &_concurrentPhaseStats; }
 
 	MMINLINE UDATA getCurrentEdenSizeInBytes(MM_EnvironmentVLHGC *env)

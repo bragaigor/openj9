@@ -361,10 +361,23 @@ MM_IncrementalGenerationalGC::mainThreadGarbageCollect(MM_EnvironmentBase *envBa
 	
 	switch(env->_cycleState->_collectionType) {
 	case MM_CycleState::CT_PARTIAL_GARBAGE_COLLECTION:
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+		// TODO: We need to be smarter here
+		//       How will we check if this PGC phase is the 1st STW phase or the 3rd STW phase?????
+		//
+		//       We can probably check if _concurrentPhase matches concurrent_phase_idle, which in that case we're indeed in 1st phase
+		//       against checking if _concurrentPhase matches concurrent_phase_complete which we're dealing with 3rd and last STW PGC phase
+		if (_extensions->isConcurrentCopyForwardEnabled()) {
+			_mainGCThread.setWorkSTWDone(false);
+			// TODO: substitute above line with _mainGCThread->setWorkSTWDone(_copyForwardDelegate->isFirstSTWPGC());
+			// runConcurrentGarbageCollect(env, allocDescription); // TODO: Are we making the separation here???
+		} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 		// TODO: Need to update to take care of concurrent PGC and call runConcurrentPartialGarbageCollect().
 		//       And create something like MM_Scavenger::scavengeIncremental
-		// TODO Create concurrent states similar to """volatile enum ConcurrentState"""
-		runPartialGarbageCollect(env, allocDescription);
+		{
+			runPartialGarbageCollect(env, allocDescription);
+		}
 		break;
 	case MM_CycleState::CT_GLOBAL_MARK_PHASE:
 		runGlobalMarkPhaseIncrement(env);
@@ -913,6 +926,9 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 		gam->flushAllocationContexts(env);
 	}
 
+	// TODO: Should this be called:
+	//       - Only once?
+	//       - Once at first STW PGC phase and another time at the last STW phase?
 	preCollect(env, env->_cycleState->_activeSubSpace, NULL, J9MMCONSTANT_IMPLICIT_GC_DEFAULT);
 
 	/* Perform any main-specific setup */
@@ -925,6 +941,15 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 	if (performExpensiveAssertions) {
 		assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
 	}
+	// TODO: Similar to Scavenger should this have the transitions:
+        //       - concurrent_phase_idle -> concurrent_phase_init
+        //       - concurrent_phase_init -> concurrent_phase_roots
+        //       - concurrent_phase_roots -> concurrent_phase_scan
+        // concurrent_phase_scan will eventually be called via mainThreadConcurrentCollect() which needs to be updated
+        // which will be responsible for the transition:
+        //       - concurrent_phase_scan -> concurrent_phase_complete
+        // Then for the last STW PGC phase, this method is called again to make the transition:
+        //       - concurrent_phase_complete -> concurrent_phase_idle
 	partialGarbageCollect(env, allocDescription);
 	if (performExpensiveAssertions) {
 		assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
@@ -935,7 +960,7 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 	 * Collection end work
 	 */
 
-
+	// TODO: Same question as preCollect. When will this be called?
 	postCollect(env, env->_cycleState->_activeSubSpace);
 }
 
@@ -1192,9 +1217,28 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 	Assert_MM_false(_workPacketsForPartialGC->getOverflowFlag());
 	Assert_MM_true(0 == static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.getTotalStallTime());
 
-	reportGCCycleStart(env);
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	//Assert_MM_false(_currentPhaseConcurrent);
+
+	bool firstIncrement = !_copyForwardDelegate.isConcurrentCycleInProgress();
+#else
+	bool firstIncrement = true;
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
+	if (firstIncrement) {
+		reportGCCycleStart(env);
+		// TODO: How to measure cycle time for concurrent PGC?
+	}
 	reportPGCStart(env);
-	reportGCIncrementStart(env, "partial collect", 0);
+	reportGCIncrementStart(env, "partial collect", 0); // TODO: Update to reflect concurrent PGC
+
+	// ###########################################################################################
+	// #### From here down.. what needs to be called in each of the 3 PGC phases?             ####
+	// #### Depending on what it might be easier to create helpers for each of these sections ####
+	// #### We need to ask the same question for partialGarbageCollectUsingCopyForward()      <<<<
+	// ## For example: do we need to check if (_schedulingDelegate.isGlobalSweepRequired()) { <<<<
+	// ## for everything concurrent PGC phase??
+	// ###########################################################################################
 
 	setupBeforePartialGC(env, env->_cycleState->_gcCode);
 	if (isGlobalMarkPhaseRunning()) {
@@ -1238,6 +1282,12 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 
 	partialGarbageCollectUsingCopyForward(env, allocDescription);
 
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	bool lastIncrement = !_copyForwardDelegate.isConcurrentCycleInProgress();
+#else
+	bool lastIncrement = true;
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
 	env->_cycleState->_workPackets = NULL;
 	env->_cycleState->_markMap = NULL;
 
@@ -1255,7 +1305,10 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 	reportGCCycleFinalIncrementEnding(env);
 	reportGCIncrementEnd(env);
 	reportPGCEnd(env);
-	reportGCCycleEnd(env);
+	if (lastIncrement) {
+		reportGCCycleEnd(env);
+		// TODO: Do we need to reset anything here?
+	}
 
 	/* Reset amount allocated for next PGC */
 	_allocatedSinceLastPGC = 0;
@@ -1329,6 +1382,13 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 	reportCopyForwardStart(env);
 	U_64 startTimeOfCopyForward = j9time_hires_clock();
 
+	// TODO: Main call to PGC and CopyForwardScheme will take care of the rest
+	// 	 What needs to go where up to this point? What needs to be called at
+	// 	 - 1st STW PGC phase
+	// 	 - 2nd STW (future concurrent) PGC phase
+	// 	 - 3rd STW PGC phase
+	// TODO: We'll probably want to create something like: _copyForwardDelegate.performCopyForwardForPartialGCIncrement(env); in the case of concurrent PGC?
+	// 	 within an if statement if (_extensions->isConcurrentCopyForwardEnabled())
 	bool successful = _copyForwardDelegate.performCopyForwardForPartialGC(env);
 	U_64 endTimeOfCopyForward = j9time_hires_clock();
 
@@ -1911,13 +1971,16 @@ MM_IncrementalGenerationalGC::reportCopyForwardEnd(MM_EnvironmentVLHGC *env, U_6
 bool
 MM_IncrementalGenerationalGC::isConcurrentWorkAvailable(MM_EnvironmentBase *env)
 {
+	// TODO: This will also need to be modified. Add something like:
+	// _delegate->isConcurrentWorkAvailable(env) which calls the isConcurrentWorkAvailable from copyForward to check the following:
+	// bool isConcurrentPGCPhaseOn = (concurrent_phase_scan == _concurrentPhase);
 	bool isConcurrentEnabled = _extensions->tarokEnableConcurrentGMP;
 	bool isGMPRunning = isGlobalMarkPhaseRunning();
 	bool isProcessingWorkPackets = MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState;
 	bool isStillPermittedToRun = !_forceConcurrentTermination;
 	bool isGMPWorkAvailable = _globalMarkPhaseIncrementBytesStillToScan > 0;
 	
-	return isConcurrentEnabled && isGMPRunning && isProcessingWorkPackets && isStillPermittedToRun && isGMPWorkAvailable;
+	return isConcurrentEnabled && isGMPRunning && isProcessingWorkPackets && isStillPermittedToRun && isGMPWorkAvailable; // Then add ...) || isConcurrentPGCPhaseOn;
 }
 
 void
@@ -1954,6 +2017,12 @@ MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *en
 	Assert_MM_true(MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState);
 
 	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.clear();
+
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled()) {
+		_mainGCThread.setWorkSTWDone(true);
+	}
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	
 	/* We pass a pointer to _forceConcurrentTermination so that we can cause the concurrent to terminate early by setting the
 	 * flag to true if we want to interrupt it so that the main thread returns to the control mutex in order to receive a

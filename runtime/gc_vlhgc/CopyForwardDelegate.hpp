@@ -126,6 +126,13 @@ public:
 			_breadthFirstCopyForwardScheme->setReservedNonEvacuatedRegions(regionCount);
 		}
 	}
+
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	bool isConcurrentCycleInProgress()
+	{
+		return _breadthFirstCopyForwardScheme->isConcurrentCycleInProgress();
+	}
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 };
 
 
