@@ -173,7 +173,9 @@ MM_CopyForwardScheme::MM_CopyForwardScheme(MM_EnvironmentVLHGC *env, MM_HeapRegi
 	, _shouldScanFinalizableObjects(false)
 	, _objectAlignmentInBytes(env->getObjectAlignmentInBytes())
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
-        , _mainGCThread(env)
+	, _mainGCThread(env)
+	, _concurrentPhase(concurrent_phase_idle)
+	, _currentPhaseConcurrent(false)
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 {
 	_typeId = __FUNCTION__;
@@ -5441,6 +5443,62 @@ MM_CopyForwardScheme::randomDecideForceNonEvacuatedRegion(UDATA ratio) {
 }
 
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+bool
+MM_CopyForwardScheme::copyForwardIncrementCollectionSet(MM_EnvironmentVLHGC *env)
+{
+		PORT_ACCESS_FROM_ENVIRONMENT(env);
+
+	/* stats management */
+	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._startTime = j9time_hires_clock();
+	/* Clear the gc statistics */
+	clearGCStats(env);
+
+	/* Perform any pre copy forwarding changes to the region set */
+	preProcessRegions(env);
+
+	if (0 != _regionCountCannotBeEvacuated) {
+		/* need to run Hybrid mode, reuse InputListMonitor for both workPackets and ScanCopyCache */
+		_workQueueMonitorPtr = env->_cycleState->_workPackets->getInputListMonitorPtr();
+		_workQueueWaitCountPtr = env->_cycleState->_workPackets->getInputListWaitCountPtr();
+	}
+	/* Perform any main-specific setup */
+	mainSetupForCopyForward(env);
+
+	// TODO: Revise
+	/* And perform the copy forward */
+	//MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, env->_cycleState);
+	//_dispatcher->run(env, &copyForwardTask);
+	copyForwardIncremental(env);
+
+	mainCleanupForCopyForward(env);
+
+	/* Record the completion time of the copy forward cycle */
+	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._endTime = j9time_hires_clock();
+
+	updateLeafRegions(env);
+
+	/* We used memory from the ACs for survivor space - make sure it doesn't hang around as allocation space */
+	clearReservedRegionLists(env);
+	_extensions->globalAllocationManager->flushAllocationContexts(env);
+
+	copyForwardCompletedSuccessfully(env);
+
+	if(_extensions->tarokEnableExpensiveAssertions) {
+		/* Verify the result of the copy forward operation (heap integrity, etc) */
+		verifyCopyForwardResult(MM_EnvironmentVLHGC::getEnvironment(env));
+	}
+
+	if (0 != _regionCountCannotBeEvacuated) {
+		_workQueueMonitorPtr = &_scanCacheMonitor;
+		_workQueueWaitCountPtr = &_scanCacheWaitCount;
+	}
+
+	/* Do any final work to regions in order to release them back to the main collector implementation */
+	postProcessRegions(env);
+
+	return copyForwardCompletedSuccessfully(env);
+}
+
 bool
 MM_CopyForwardScheme::copyForwardInit(MM_EnvironmentVLHGC *env)
 {

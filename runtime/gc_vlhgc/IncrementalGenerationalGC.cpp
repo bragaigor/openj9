@@ -367,7 +367,8 @@ MM_IncrementalGenerationalGC::mainThreadGarbageCollect(MM_EnvironmentBase *envBa
 		//
 		//       We can probably check if _concurrentPhase matches concurrent_phase_idle, which in that case we're indeed in 1st phase
 		//       against checking if _concurrentPhase matches concurrent_phase_complete which we're dealing with 3rd and last STW PGC phase
-		if (_extensions->isConcurrentCopyForwardEnabled()) {
+		if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isFirstPGCPhase()) {
+			printf("### TID: %zu. Setting _mainGCThread.setWorkSTWDone to False!!!!\n", (uintptr_t)pthread_self());
 			_mainGCThread.setWorkSTWDone(false);
 			// TODO: substitute above line with _mainGCThread->setWorkSTWDone(_copyForwardDelegate->isFirstSTWPGC());
 			// runConcurrentGarbageCollect(env, allocDescription); // TODO: Are we making the separation here???
@@ -507,6 +508,7 @@ MM_IncrementalGenerationalGC::internalPreCollect(MM_EnvironmentBase *env, MM_Mem
 			}
 		}
 	} else {
+		// TODO: This might need to be updated!!!!!
 		/* Expected types of pre-existing cycle states */
 		Assert_MM_true((env->_cycleState->_collectionType == MM_CycleState::CT_PARTIAL_GARBAGE_COLLECTION) || (env->_cycleState->_collectionType == MM_CycleState::CT_GLOBAL_MARK_PHASE));
 	}
@@ -1367,6 +1369,7 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._externalCompactBytes = 0;
 	}
 
+	// TODO: Starts the TIMER!!!!!!
 	_schedulingDelegate.partialGarbageCollectStarted(env);
 
 	/* flush the RSList and RSM from our currently selected regions into the card table since we will rebuild them as we process the table */
@@ -1382,6 +1385,7 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 	reportCopyForwardStart(env);
 	U_64 startTimeOfCopyForward = j9time_hires_clock();
 
+	bool successful = false;
 	// TODO: Main call to PGC and CopyForwardScheme will take care of the rest
 	// 	 What needs to go where up to this point? What needs to be called at
 	// 	 - 1st STW PGC phase
@@ -1389,7 +1393,15 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 	// 	 - 3rd STW PGC phase
 	// TODO: We'll probably want to create something like: _copyForwardDelegate.performCopyForwardForPartialGCIncrement(env); in the case of concurrent PGC?
 	// 	 within an if statement if (_extensions->isConcurrentCopyForwardEnabled())
-	bool successful = _copyForwardDelegate.performCopyForwardForPartialGC(env);
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled()) {
+		successful = _copyForwardDelegate.performCopyForwardForConcurrentPartialGC(env);
+	} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		successful = _copyForwardDelegate.performCopyForwardForPartialGC(env);
+	}
+
 	U_64 endTimeOfCopyForward = j9time_hires_clock();
 
 	/* Record stats after a copy forward */

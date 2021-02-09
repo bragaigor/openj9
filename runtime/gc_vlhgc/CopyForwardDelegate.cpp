@@ -76,6 +76,22 @@ MM_CopyForwardDelegate::performCopyForwardForPartialGC(MM_EnvironmentVLHGC *env)
 	return result;
 }
 
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+bool
+MM_CopyForwardDelegate::performCopyForwardForConcurrentPartialGC(MM_EnvironmentVLHGC *env)
+{
+	MM_CompactGroupPersistentStats *persistentStats = _extensions->compactGroupPersistentStats;
+	bool result = false;
+
+	MM_CompactGroupPersistentStats::updateStatsBeforeCopyForward(env, persistentStats);
+	result = _breadthFirstCopyForwardScheme->copyForwardIncrementCollectionSet(env);
+
+	MM_CompactGroupPersistentStats::updateStatsAfterCopyForward(env, persistentStats);
+
+	return result;
+}
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
 void
 MM_CopyForwardDelegate::preCopyForwardSetup(MM_EnvironmentVLHGC *env)
 {

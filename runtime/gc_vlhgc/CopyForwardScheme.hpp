@@ -1118,6 +1118,7 @@ public:
 
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
 	/* main thread specific methods */
+	bool copyForwardIncrementCollectionSet(MM_EnvironmentVLHGC *env);
 	bool copyForwardIncremental(MM_EnvironmentVLHGC *env);
 	bool copyForwardInit(MM_EnvironmentVLHGC *env);
 	bool copyForwardRoots(MM_EnvironmentVLHGC *env);
@@ -1135,6 +1136,14 @@ public:
 	 */
 	bool isConcurrentCycleInProgress() {
 		return concurrent_phase_idle != _concurrentPhase;
+	}
+
+	/**
+	 * True if CS cycle is not active and it's the start of the first
+	 * STW PGC phase
+	 */
+	bool isFirstPGCPhase() {
+		return concurrent_phase_idle == _concurrentPhase;
 	}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 

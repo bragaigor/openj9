@@ -128,9 +128,21 @@ public:
 	}
 
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+
+	/**
+	 * TODO: Document
+	 *
+	 */
+	bool performCopyForwardForConcurrentPartialGC(MM_EnvironmentVLHGC *env);
+
 	bool isConcurrentCycleInProgress()
 	{
 		return _breadthFirstCopyForwardScheme->isConcurrentCycleInProgress();
+	}
+
+	bool isFirstPGCPhase()
+	{
+		return _breadthFirstCopyForwardScheme->isFirstPGCPhase();
 	}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 };
