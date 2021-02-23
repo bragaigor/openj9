@@ -135,14 +135,14 @@ public:
 	 */
 	bool performCopyForwardForConcurrentPartialGC(MM_EnvironmentVLHGC *env);
 
-	bool isConcurrentCycleInProgress()
+	MMINLINE bool isConcurrentCycleInProgress()
 	{
 		return _breadthFirstCopyForwardScheme->isConcurrentCycleInProgress();
 	}
 
-	bool isFirstPGCPhase()
+	MMINLINE bool isConcurrentCopyForwardPhase()
 	{
-		return _breadthFirstCopyForwardScheme->isFirstPGCPhase();
+		return _breadthFirstCopyForwardScheme->isConcurrentCopyForwardPhase();
 	}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 };

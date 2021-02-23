@@ -1134,16 +1134,15 @@ public:
 	 * True if CS cycle is active at any point (STW or concurrent task active,
 	 * or even short gaps between STW and concurrent tasks)
 	 */
-	bool isConcurrentCycleInProgress() {
+	MMINLINE bool isConcurrentCycleInProgress() {
 		return concurrent_phase_idle != _concurrentPhase;
 	}
 
 	/**
-	 * True if CS cycle is not active and it's the start of the first
-	 * STW PGC phase
+	 *
 	 */
-	bool isFirstPGCPhase() {
-		return concurrent_phase_idle == _concurrentPhase;
+	MMINLINE bool isConcurrentCopyForwardPhase() {
+		return concurrent_phase_scan == _concurrentPhase;
 	}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 

@@ -43,10 +43,14 @@ MM_CopyForwardSchemeTask::synchronizeGCThreads(MM_EnvironmentBase *envBase, cons
 bool
 MM_CopyForwardSchemeTask::synchronizeGCThreadsAndReleaseMain(MM_EnvironmentBase *envBase, const char *id)
 {
+	printf("\t\t\t\t\t\t\t|| TID: %zu. Inside synchronizeGCThreadsAndReleaseMain 000 ...\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	PORT_ACCESS_FROM_ENVIRONMENT(envBase);
 	MM_EnvironmentVLHGC* env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 	U_64 startTime = j9time_hires_clock();
 	bool result = MM_ParallelTask::synchronizeGCThreadsAndReleaseMain(env, id);
+	printf("\t\t\t\t\t\t\t- TID: %zu. Inside synchronizeGCThreadsAndReleaseMain 000 and ABOUT TO RETURN from it!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	U_64 endTime = j9time_hires_clock();
 	env->_copyForwardStats.addToSyncStallTime(startTime, endTime);
 
@@ -69,10 +73,14 @@ MM_CopyForwardSchemeTask::synchronizeGCThreadsAndReleaseSingleThread(MM_Environm
 bool
 MM_CopyForwardSchemeTask::synchronizeGCThreadsAndReleaseMainForAbort(MM_EnvironmentBase *envBase, const char *id)
 {
+	printf("\t\t\t\t\t\t- TID: %zu. Inside synchronizeGCThreadsAndReleaseMainForAbort...\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	PORT_ACCESS_FROM_ENVIRONMENT(envBase);
 	MM_EnvironmentVLHGC* env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 	U_64 startTime = j9time_hires_clock();
 	bool result = MM_ParallelTask::synchronizeGCThreadsAndReleaseMain(env, id);
+	printf("\t\t\t\t\t\t- TID: %zu. Inside synchronizeGCThreadsAndReleaseMainForAbort and ABOUT TO RETURN from it!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	U_64 endTime = j9time_hires_clock();
 	env->_copyForwardStats.addToAbortStallTime(startTime, endTime);
 

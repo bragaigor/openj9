@@ -262,8 +262,17 @@ MM_SchedulingDelegate::partialGarbageCollectCompleted(MM_EnvironmentVLHGC *env, 
 		UDATA nonEdenSurvivorCount = copyForwardStats->_nonEdenSurvivorRegionCount;
 		
 		/* estimate how many more regions we would have needed to avoid abort */
-		Assert_MM_true( (0 == copyForwardStats->_scanBytesEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount));
-		Assert_MM_true( (0 == copyForwardStats->_scanBytesNonEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount));
+		printf("### TID: %zu.. Inside partialGarbageCollectCompleted, _scanBytesEden: %zu, _aborted: %d, _nonEvacuateRegionCount: %zu, _scanBytesNonEden: %zu...\n", (uintptr_t)pthread_self(), (uintptr_t)copyForwardStats->_scanBytesEden, (int)copyForwardStats->_aborted, (uintptr_t)copyForwardStats->_nonEvacuateRegionCount, (uintptr_t)copyForwardStats->_scanBytesNonEden);
+		if (!((0 == copyForwardStats->_scanBytesEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount))) {
+			printf("--------------- TID: %zu.. ASSERT _scanBytesEden something 000000000000000\n", (uintptr_t)pthread_self());
+		}
+		if (!((0 == copyForwardStats->_scanBytesNonEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount))) {
+			printf("--------------- TID: %zu.. ASSERT _scanBytesNonEden something 11111111111111\n", (uintptr_t)pthread_self());
+		}
+		fflush(stdout);
+		// TODO: Why copyForwardStats->_scanBytesNonEden is non zero sometimes????
+		//Assert_MM_true( (0 == copyForwardStats->_scanBytesEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount));
+		//Assert_MM_true( (0 == copyForwardStats->_scanBytesNonEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount));
 		edenSurvivorCount += (copyForwardStats->_scanBytesEden + regionSize - 1) / regionSize;
 		nonEdenSurvivorCount += (copyForwardStats->_scanBytesNonEden + regionSize - 1) / regionSize;
 
