@@ -156,6 +156,8 @@ public:
 	
 	virtual	void handleConcurrentStartInternal(J9HookInterface** hook, UDATA eventNum, void* eventData);
 	virtual void handleConcurrentEndInternal(J9HookInterface** hook, UDATA eventNum, void* eventData);
+	// TODO: Must be updated to also handle "PGC concurrent work" or something similar...
+	// 	 Should another getConcurrentTypeString() with a param be created or introduce a field in _vlhgcIncrementStats?
 	virtual const char *getConcurrentTypeString() { return "GMP work packet processing"; }
 
 	/**

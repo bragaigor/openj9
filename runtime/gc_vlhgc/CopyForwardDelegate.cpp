@@ -83,10 +83,16 @@ MM_CopyForwardDelegate::performCopyForwardForConcurrentPartialGC(MM_EnvironmentV
 	MM_CompactGroupPersistentStats *persistentStats = _extensions->compactGroupPersistentStats;
 	bool result = false;
 
-	MM_CompactGroupPersistentStats::updateStatsBeforeCopyForward(env, persistentStats);
+	// TODO: Only call updateStatsBeforeCopyForward in first concurrent PGC increment??
+	if (!isConcurrentCycleInProgress()) {
+		MM_CompactGroupPersistentStats::updateStatsBeforeCopyForward(env, persistentStats);
+	}
 	result = _breadthFirstCopyForwardScheme->copyForwardIncrementCollectionSet(env);
 
-	MM_CompactGroupPersistentStats::updateStatsAfterCopyForward(env, persistentStats);
+	// TODO: Only call updateStatsAfterCopyForward in last concurrent PGC increment??
+	if (!isConcurrentCycleInProgress()) {
+		MM_CompactGroupPersistentStats::updateStatsAfterCopyForward(env, persistentStats);
+	}
 
 	return result;
 }

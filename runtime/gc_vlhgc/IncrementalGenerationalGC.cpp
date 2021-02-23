@@ -367,18 +367,16 @@ MM_IncrementalGenerationalGC::mainThreadGarbageCollect(MM_EnvironmentBase *envBa
 		//
 		//       We can probably check if _concurrentPhase matches concurrent_phase_idle, which in that case we're indeed in 1st phase
 		//       against checking if _concurrentPhase matches concurrent_phase_complete which we're dealing with 3rd and last STW PGC phase
-		if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isFirstPGCPhase()) {
+		if (_extensions->isConcurrentCopyForwardEnabled() && !_copyForwardDelegate.isConcurrentCycleInProgress()) {
 			printf("### TID: %zu. Setting _mainGCThread.setWorkSTWDone to False!!!!\n", (uintptr_t)pthread_self());
 			_mainGCThread.setWorkSTWDone(false);
 			// TODO: substitute above line with _mainGCThread->setWorkSTWDone(_copyForwardDelegate->isFirstSTWPGC());
 			// runConcurrentGarbageCollect(env, allocDescription); // TODO: Are we making the separation here???
-		} else
+		}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 		// TODO: Need to update to take care of concurrent PGC and call runConcurrentPartialGarbageCollect().
 		//       And create something like MM_Scavenger::scavengeIncremental
-		{
-			runPartialGarbageCollect(env, allocDescription);
-		}
+		runPartialGarbageCollect(env, allocDescription);
 		break;
 	case MM_CycleState::CT_GLOBAL_MARK_PHASE:
 		runGlobalMarkPhaseIncrement(env);
@@ -920,28 +918,35 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 	 * Collection preparation work including cache flushing and stats reporting.
 	 */
 
-	/* Flush non-allocation caches for update purposes (verbose) and safety (member deletion) */
-	GC_OMRVMInterface::flushNonAllocationCaches(env);
-	/* Flush allocation caches */
-	MM_GlobalAllocationManager *gam = _extensions->globalAllocationManager;
-	if (NULL != gam) {
-		gam->flushAllocationContexts(env);
-	}
-
-	// TODO: Should this be called:
-	//       - Only once?
-	//       - Once at first STW PGC phase and another time at the last STW phase?
-	preCollect(env, env->_cycleState->_activeSubSpace, NULL, J9MMCONSTANT_IMPLICIT_GC_DEFAULT);
-
-	/* Perform any main-specific setup */
-	_extensions->globalVLHGCStats.gcCount += 1;
-
-	/*
-	 * Core collection work.
-	 */
 	bool performExpensiveAssertions = _extensions->tarokEnableExpensiveAssertions;
-	if (performExpensiveAssertions) {
-		assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
+
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	bool isConcurrentCopyForwardEnabled = _extensions->isConcurrentCopyForwardEnabled();
+	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		/* Flush non-allocation caches for update purposes (verbose) and safety (member deletion) */
+		GC_OMRVMInterface::flushNonAllocationCaches(env);
+		/* Flush allocation caches */
+		MM_GlobalAllocationManager *gam = _extensions->globalAllocationManager;
+		if (NULL != gam) {
+			gam->flushAllocationContexts(env);
+		}
+
+		// TODO: Should this be called:
+		//       - Only once?
+		//       - Once at first STW PGC phase and another time at the last STW phase?
+		preCollect(env, env->_cycleState->_activeSubSpace, NULL, J9MMCONSTANT_IMPLICIT_GC_DEFAULT);
+
+		/* Perform any main-specific setup */
+		_extensions->globalVLHGCStats.gcCount += 1;
+
+		/*
+		 * Core collection work.
+		 */
+		if (performExpensiveAssertions) {
+			assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
+		}
 	}
 	// TODO: Similar to Scavenger should this have the transitions:
         //       - concurrent_phase_idle -> concurrent_phase_init
@@ -953,17 +958,23 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
         // Then for the last STW PGC phase, this method is called again to make the transition:
         //       - concurrent_phase_complete -> concurrent_phase_idle
 	partialGarbageCollect(env, allocDescription);
-	if (performExpensiveAssertions) {
-		assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
-		assertTableClean(env, isGlobalMarkPhaseRunning() ? CARD_GMP_MUST_SCAN : CARD_CLEAN);
+
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		if (performExpensiveAssertions) {
+			assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
+			assertTableClean(env, isGlobalMarkPhaseRunning() ? CARD_GMP_MUST_SCAN : CARD_CLEAN);
+		}
+
+		/*
+		 * Collection end work
+		 */
+
+		// TODO: Same question as preCollect. When will this be called?
+		postCollect(env, env->_cycleState->_activeSubSpace);
 	}
-
-	/*
-	 * Collection end work
-	 */
-
-	// TODO: Same question as preCollect. When will this be called?
-	postCollect(env, env->_cycleState->_activeSubSpace);
 }
 
 void
@@ -1242,43 +1253,49 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 	// ## for everything concurrent PGC phase??
 	// ###########################################################################################
 
-	setupBeforePartialGC(env, env->_cycleState->_gcCode);
-	if (isGlobalMarkPhaseRunning()) {
-		/* since we have a GMP running, the PGC will need to know about it to find roots in its mark map */
-		env->_cycleState->_externalCycleState = &_persistentGlobalMarkPhaseState;
-	}
-	MM_CompactGroupPersistentStats *persistentStats = _extensions->compactGroupPersistentStats;
-	MM_CompactGroupPersistentStats::updateStatsBeforeCollect(env, persistentStats);
-	if (_schedulingDelegate.isGlobalSweepRequired()) {
-		Assert_MM_true(NULL == env->_cycleState->_externalCycleState);
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	bool isConcurrentCopyForwardEnabled = _extensions->isConcurrentCopyForwardEnabled();
+	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && firstIncrement))
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		setupBeforePartialGC(env, env->_cycleState->_gcCode);
+		if (isGlobalMarkPhaseRunning()) {
+			/* since we have a GMP running, the PGC will need to know about it to find roots in its mark map */
+			env->_cycleState->_externalCycleState = &_persistentGlobalMarkPhaseState;
+		}
+		MM_CompactGroupPersistentStats *persistentStats = _extensions->compactGroupPersistentStats;
+		MM_CompactGroupPersistentStats::updateStatsBeforeCollect(env, persistentStats);
+		if (_schedulingDelegate.isGlobalSweepRequired()) {
+			Assert_MM_true(NULL == env->_cycleState->_externalCycleState);
 
-		_reclaimDelegate.runGlobalSweepBeforePGC(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode);
+			_reclaimDelegate.runGlobalSweepBeforePGC(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode);
 
-		/* TODO: lpnguyen make another statisticsDelegate or something that both schedulingDelegate and reclaimDelegate can see
-		 * so that we can avoid this kind of stats-passing mess.  
+			/* TODO: lpnguyen make another statisticsDelegate or something that both schedulingDelegate and reclaimDelegate can see
+			 * so that we can avoid this kind of stats-passing mess.
+			 */
+			double regionConsumptionRate = _schedulingDelegate.getTotalRegionConsumptionRate();
+			double avgSurvivorRegions = _schedulingDelegate.getAverageSurvivorSetRegionCount();
+			double avgCopyForwardRate = _schedulingDelegate.getAverageCopyForwardRate();
+			U_64 scanTimeCostPerGMP = _schedulingDelegate.getScanTimeCostPerGMP(env);
+
+			double optimalEmptinessRegionThreshold = _reclaimDelegate.calculateOptimalEmptinessRegionThreshold(env, regionConsumptionRate, avgSurvivorRegions, avgCopyForwardRate, scanTimeCostPerGMP);
+			_schedulingDelegate.setAutomaticDefragmentEmptinessThreshold(optimalEmptinessRegionThreshold);
+		}
+
+		/* Determine if there are enough regions available to attempt a copy-forward collection.
+		 * Note that this check is done after we sweep, since that might have recovered enough
+		 * regions to make copy-forward feasible.
 		 */
-		double regionConsumptionRate = _schedulingDelegate.getTotalRegionConsumptionRate();
-		double avgSurvivorRegions = _schedulingDelegate.getAverageSurvivorSetRegionCount();
-		double avgCopyForwardRate = _schedulingDelegate.getAverageCopyForwardRate();
-		U_64 scanTimeCostPerGMP = _schedulingDelegate.getScanTimeCostPerGMP(env);
-
-		double optimalEmptinessRegionThreshold = _reclaimDelegate.calculateOptimalEmptinessRegionThreshold(env, regionConsumptionRate, avgSurvivorRegions, avgCopyForwardRate, scanTimeCostPerGMP);
-		_schedulingDelegate.setAutomaticDefragmentEmptinessThreshold(optimalEmptinessRegionThreshold);
-	}
-
-	/* Determine if there are enough regions available to attempt a copy-forward collection.
-	 * Note that this check is done after we sweep, since that might have recovered enough 
-	 * regions to make copy-forward feasible.
-	 */ 
-	if (env->_cycleState->_shouldRunCopyForward) {
-		MM_GlobalAllocationManagerTarok *allocationmanager = (MM_GlobalAllocationManagerTarok *)_extensions->globalAllocationManager; 
-		/* We need at least one region per context for surviving Eden objects. Older objects can move into tail-fill regions. */
-		/* (We could require more than one region, but experimental evidence shows little value in doing so.) */ 
-		UDATA minimumRegionsForCopyForward = allocationmanager->getManagedAllocationContextCount();
-		UDATA freeRegions = allocationmanager->getFreeRegionCount();
-		if (freeRegions < minimumRegionsForCopyForward) {
-			env->_cycleState->_shouldRunCopyForward = false;
-			env->_cycleState->_reasonForMarkCompactPGC = MM_CycleState::reason_insufficient_free_space;
+		if (env->_cycleState->_shouldRunCopyForward) {
+			MM_GlobalAllocationManagerTarok *allocationmanager = (MM_GlobalAllocationManagerTarok *)_extensions->globalAllocationManager;
+			/* We need at least one region per context for surviving Eden objects. Older objects can move into tail-fill regions. */
+			/* (We could require more than one region, but experimental evidence shows little value in doing so.) */
+			UDATA minimumRegionsForCopyForward = allocationmanager->getManagedAllocationContextCount();
+			UDATA freeRegions = allocationmanager->getFreeRegionCount();
+			if (freeRegions < minimumRegionsForCopyForward) {
+				env->_cycleState->_shouldRunCopyForward = false;
+				env->_cycleState->_reasonForMarkCompactPGC = MM_CycleState::reason_insufficient_free_space;
+			}
 		}
 	}
 
@@ -1290,19 +1307,24 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 	bool lastIncrement = true;
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 
-	env->_cycleState->_workPackets = NULL;
-	env->_cycleState->_markMap = NULL;
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+        if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && lastIncrement))
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		env->_cycleState->_workPackets = NULL;
+		env->_cycleState->_markMap = NULL;
 
-	if (attemptHeapResize(env, allocDescription)) {
-		/* Check was it successful contraction */
-		if (env->_cycleState->_activeSubSpace->wasContractedThisGC(_extensions->globalVLHGCStats.gcCount)) {
-			_interRegionRememberedSet->setShouldFlushBuffersForDecommitedRegions();
+		if (attemptHeapResize(env, allocDescription)) {
+			/* Check was it successful contraction */
+			if (env->_cycleState->_activeSubSpace->wasContractedThisGC(_extensions->globalVLHGCStats.gcCount)) {
+				_interRegionRememberedSet->setShouldFlushBuffersForDecommitedRegions();
+			}
 		}
+
+		env->_cycleState->_externalCycleState = NULL;
+
+		incrementRegionAges(env, _taxationThreshold, true);
 	}
-
-	env->_cycleState->_externalCycleState = NULL;
-
-	incrementRegionAges(env, _taxationThreshold, true);
 
 	reportGCCycleFinalIncrementEnding(env);
 	reportGCIncrementEnd(env);
@@ -1312,10 +1334,16 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 		// TODO: Do we need to reset anything here?
 	}
 
-	/* Reset amount allocated for next PGC */
-	_allocatedSinceLastPGC = 0;
+	// TODO: Clean this as this is UGLY!!!!!!
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && lastIncrement))
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		/* Reset amount allocated for next PGC */
+		_allocatedSinceLastPGC = 0;
 
-	_extensions->allocationStats.clear();
+		_extensions->allocationStats.clear();
+	}
 }
 
 void
@@ -1324,65 +1352,73 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 	Trc_MM_IncrementalGenerationalGC_partialGarbageCollectUsingCopyForward_Entry(env->getLanguageVMThread());
 	
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
+	bool useSlidingCompactor = false;
+	UDATA desiredCompactWork = 0;
 
-	/* Record stats before a copy forward */
-	UDATA freeMemoryForSurvivor = _extensions->getHeap()->getActualFreeMemorySize();
-	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._freeMemoryBefore = freeMemoryForSurvivor;
-	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._totalMemoryBefore = _extensions->getHeap()->getMemorySize();
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	bool isConcurrentCopyForwardEnabled = _extensions->isConcurrentCopyForwardEnabled();
+	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		/* Record stats before a copy forward */
+		UDATA freeMemoryForSurvivor = _extensions->getHeap()->getActualFreeMemorySize();
+		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._freeMemoryBefore = freeMemoryForSurvivor;
+		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._totalMemoryBefore = _extensions->getHeap()->getMemorySize();
 
-	if (_extensions->tarokUseProjectedSurvivalCollectionSet) {
-		_projectedSurvivalCollectionSetDelegate.createRegionCollectionSetForPartialGC(env);
-	} else {
-		_collectionSetDelegate.createRegionCollectionSetForPartialGC(env);
-	}
-
-	UDATA desiredCompactWork = _schedulingDelegate.getDesiredCompactWork();
-	UDATA estimatedSurvivorRequired = _copyForwardDelegate.estimateRequiredSurvivorBytes(env);
-
-	MM_GlobalAllocationManagerTarok *allocationmanager = (MM_GlobalAllocationManagerTarok *)_extensions->globalAllocationManager;
-	UDATA freeRegions = allocationmanager->getFreeRegionCount();
-	double estimatedReguiredSurvivorRegions = _schedulingDelegate.getAverageSurvivorSetRegionCount();
-	MM_GCExtensions* extensions = MM_GCExtensions::getExtensions(env);
-	/* Adjust estimatedReguiredSurvivorRegions if extensions->fvtest_forceCopyForwardHybridRatio is set(for testing purpose) */
-	if ((0 != extensions->fvtest_forceCopyForwardHybridRatio) && (100 >= extensions->fvtest_forceCopyForwardHybridRatio)) {
-		estimatedReguiredSurvivorRegions = estimatedReguiredSurvivorRegions * (100 - extensions->fvtest_forceCopyForwardHybridRatio) / 100;
-	}
-
-	if ((_schedulingDelegate.isPGCAbortDuringGMP() || _schedulingDelegate.isFirstPGCAfterGMP()) && (estimatedReguiredSurvivorRegions > freeRegions)) {
-		double edenSurvivorRate = _schedulingDelegate.getAvgEdenSurvivalRateCopyForward(env);
-		UDATA regionCountRequiredMarkOnly = 0;
-		if (0 != edenSurvivorRate) {
-			regionCountRequiredMarkOnly = (UDATA)((estimatedReguiredSurvivorRegions - freeRegions) / edenSurvivorRate);
+		if (_extensions->tarokUseProjectedSurvivalCollectionSet) {
+			_projectedSurvivalCollectionSetDelegate.createRegionCollectionSetForPartialGC(env);
 		} else {
-			regionCountRequiredMarkOnly = _schedulingDelegate.getCurrentEdenSizeInRegions(env);
+			_collectionSetDelegate.createRegionCollectionSetForPartialGC(env);
 		}
-		/* set the number of the selected eden regions to nonEvacuated region to avoid potential abort case */
-		_copyForwardDelegate.setReservedNonEvacuatedRegions(regionCountRequiredMarkOnly);
-	}
 
-	bool useSlidingCompactor = ((estimatedSurvivorRequired + desiredCompactWork) > freeMemoryForSurvivor);
-	Trc_MM_IncrementalGenerationalGC_partialGarbageCollectUsingCopyForward_ChooseCompactor(env->getLanguageVMThread(), estimatedSurvivorRequired, desiredCompactWork, freeMemoryForSurvivor, useSlidingCompactor ? "sliding" : "copying");
+		desiredCompactWork = _schedulingDelegate.getDesiredCompactWork();
+		UDATA estimatedSurvivorRequired = _copyForwardDelegate.estimateRequiredSurvivorBytes(env);
 
-	if (!useSlidingCompactor) {
-		_reclaimDelegate.createRegionCollectionSetForPartialGC(env, desiredCompactWork);
-		/* no external compact work -- it's all being done using copy-forward */
-		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._externalCompactBytes = 0;
-	}
+		MM_GlobalAllocationManagerTarok *allocationmanager = (MM_GlobalAllocationManagerTarok *)_extensions->globalAllocationManager;
+		UDATA freeRegions = allocationmanager->getFreeRegionCount();
+		double estimatedReguiredSurvivorRegions = _schedulingDelegate.getAverageSurvivorSetRegionCount();
+		MM_GCExtensions* extensions = MM_GCExtensions::getExtensions(env);
+		/* Adjust estimatedReguiredSurvivorRegions if extensions->fvtest_forceCopyForwardHybridRatio is set(for testing purpose) */
+		if ((0 != extensions->fvtest_forceCopyForwardHybridRatio) && (100 >= extensions->fvtest_forceCopyForwardHybridRatio)) {
+			estimatedReguiredSurvivorRegions = estimatedReguiredSurvivorRegions * (100 - extensions->fvtest_forceCopyForwardHybridRatio) / 100;
+		}
 
-	// TODO: Starts the TIMER!!!!!!
-	_schedulingDelegate.partialGarbageCollectStarted(env);
+		if ((_schedulingDelegate.isPGCAbortDuringGMP() || _schedulingDelegate.isFirstPGCAfterGMP()) && (estimatedReguiredSurvivorRegions > freeRegions)) {
+			double edenSurvivorRate = _schedulingDelegate.getAvgEdenSurvivalRateCopyForward(env);
+			UDATA regionCountRequiredMarkOnly = 0;
+			if (0 != edenSurvivorRate) {
+				regionCountRequiredMarkOnly = (UDATA)((estimatedReguiredSurvivorRegions - freeRegions) / edenSurvivorRate);
+			} else {
+				regionCountRequiredMarkOnly = _schedulingDelegate.getCurrentEdenSizeInRegions(env);
+			}
+			/* set the number of the selected eden regions to nonEvacuated region to avoid potential abort case */
+			_copyForwardDelegate.setReservedNonEvacuatedRegions(regionCountRequiredMarkOnly);
+		}
 
-	/* flush the RSList and RSM from our currently selected regions into the card table since we will rebuild them as we process the table */
-	flushRememberedSetIntoCardTable(env);
+		useSlidingCompactor = ((estimatedSurvivorRequired + desiredCompactWork) > freeMemoryForSurvivor);
+		Trc_MM_IncrementalGenerationalGC_partialGarbageCollectUsingCopyForward_ChooseCompactor(env->getLanguageVMThread(), estimatedSurvivorRequired, desiredCompactWork, freeMemoryForSurvivor, useSlidingCompactor ? "sliding" : "copying");
 
-	_interRegionRememberedSet->flushBuffersForDecommitedRegions(env);
+		if (!useSlidingCompactor) {
+			_reclaimDelegate.createRegionCollectionSetForPartialGC(env, desiredCompactWork);
+			/* no external compact work -- it's all being done using copy-forward */
+			static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._externalCompactBytes = 0;
+		}
 
-	Assert_MM_true(env->_cycleState->_markMap == _markMapManager->getPartialGCMap());
-	Assert_MM_true(env->_cycleState->_workPackets == _workPacketsForPartialGC);
+		// TODO: Starts the TIMER!!!!!! Will this be the times for the cycle or for the increment???
+		_schedulingDelegate.partialGarbageCollectStarted(env);
+
+		/* flush the RSList and RSM from our currently selected regions into the card table since we will rebuild them as we process the table */
+		flushRememberedSetIntoCardTable(env);
+
+		_interRegionRememberedSet->flushBuffersForDecommitedRegions(env);
+
+		Assert_MM_true(env->_cycleState->_markMap == _markMapManager->getPartialGCMap());
+		Assert_MM_true(env->_cycleState->_workPackets == _workPacketsForPartialGC);
 	
-	_copyForwardDelegate.preCopyForwardSetup(env);
+		_copyForwardDelegate.preCopyForwardSetup(env);
 
-	reportCopyForwardStart(env);
+		reportCopyForwardStart(env);
+	}
 	U_64 startTimeOfCopyForward = j9time_hires_clock();
 
 	bool successful = false;
@@ -1395,6 +1431,7 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 	// 	 within an if statement if (_extensions->isConcurrentCopyForwardEnabled())
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
 	if (_extensions->isConcurrentCopyForwardEnabled()) {
+		/* Responsible for concurrent PGC increments */
 		successful = _copyForwardDelegate.performCopyForwardForConcurrentPartialGC(env);
 	} else
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
@@ -1402,66 +1439,71 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 		successful = _copyForwardDelegate.performCopyForwardForPartialGC(env);
 	}
 
-	U_64 endTimeOfCopyForward = j9time_hires_clock();
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+        if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		U_64 endTimeOfCopyForward = j9time_hires_clock();
 
-	/* Record stats after a copy forward */
-	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._freeMemoryAfter = _extensions->getHeap()->getActualFreeMemorySize();
-	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._totalMemoryAfter = _extensions->getHeap()->getMemorySize();
+		/* Record stats after a copy forward */
+		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._freeMemoryAfter = _extensions->getHeap()->getActualFreeMemorySize();
+		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._totalMemoryAfter = _extensions->getHeap()->getMemorySize();
 
-	reportCopyForwardEnd(env, endTimeOfCopyForward - startTimeOfCopyForward);
+		reportCopyForwardEnd(env, endTimeOfCopyForward - startTimeOfCopyForward);
 
-	postMarkMapCompletion(env);
-	_copyForwardDelegate.postCopyForwardCleanup(env);
+		postMarkMapCompletion(env);
+		_copyForwardDelegate.postCopyForwardCleanup(env);
 
-	if (_extensions->tarokEnableExpensiveAssertions) {
-		/* all objects in collection set regions are now marked so ensure that there are no more bump-allocated-only regions */
-		GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
-		MM_HeapRegionDescriptorVLHGC *region = NULL;
-		while (NULL != (region = regionIterator.nextRegion())) {
-			Assert_MM_false(region->getRegionType() == MM_HeapRegionDescriptor::BUMP_ALLOCATED);
+		if (_extensions->tarokEnableExpensiveAssertions) {
+			/* all objects in collection set regions are now marked so ensure that there are no more bump-allocated-only regions */
+			GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
+			MM_HeapRegionDescriptorVLHGC *region = NULL;
+			while (NULL != (region = regionIterator.nextRegion())) {
+				Assert_MM_false(region->getRegionType() == MM_HeapRegionDescriptor::BUMP_ALLOCATED);
+			}
 		}
-	}
 
-	_schedulingDelegate.copyForwardCompleted(env);
+		_schedulingDelegate.copyForwardCompleted(env);
 
-	/* It is possible that we could end up with evacuate regions which were not compacted (inaccurate RSCL) so we need to detect that case and sweep such regions, before completing the PGC */
-	UDATA regionsSkippedByCompactorRequiringSweep = 0;
-	if (useSlidingCompactor) {
-		/* compact to meet compaction targets, as well as compacting any unsuccessfully evacuated regions */
-		_reclaimDelegate.runCompact(env, allocDescription, env->_cycleState->_activeSubSpace, desiredCompactWork, env->_cycleState->_gcCode, _markMapManager->getGlobalMarkPhaseMap(), &regionsSkippedByCompactorRequiringSweep);
-		/* we can't tell exactly how many bytes were added to meet the compact goal, so we'll assume it was an exact match. The precise amount could be lower or higher */ 
-		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._externalCompactBytes = desiredCompactWork;
-	} else if(!successful || _copyForwardDelegate.isHybrid(env)) {
-		/* compact any unsuccessfully evacuated regions (include reclaiming jni critical eden regions)*/
-		_reclaimDelegate.runReclaimForAbortedCopyForward(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode, _markMapManager->getGlobalMarkPhaseMap(), &regionsSkippedByCompactorRequiringSweep);
-	}
+		/* It is possible that we could end up with evacuate regions which were not compacted (inaccurate RSCL) so we need to detect that case and sweep such regions, before completing the PGC */
+		UDATA regionsSkippedByCompactorRequiringSweep = 0;
+		if (useSlidingCompactor) {
+			/* compact to meet compaction targets, as well as compacting any unsuccessfully evacuated regions */
+			_reclaimDelegate.runCompact(env, allocDescription, env->_cycleState->_activeSubSpace, desiredCompactWork, env->_cycleState->_gcCode, _markMapManager->getGlobalMarkPhaseMap(), &regionsSkippedByCompactorRequiringSweep);
+			/* we can't tell exactly how many bytes were added to meet the compact goal, so we'll assume it was an exact match. The precise amount could be lower or higher */
+			static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._externalCompactBytes = desiredCompactWork;
+		} else if(!successful || _copyForwardDelegate.isHybrid(env)) {
+			/* compact any unsuccessfully evacuated regions (include reclaiming jni critical eden regions)*/
+			_reclaimDelegate.runReclaimForAbortedCopyForward(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode, _markMapManager->getGlobalMarkPhaseMap(), &regionsSkippedByCompactorRequiringSweep);
+		}
 
-	if (regionsSkippedByCompactorRequiringSweep > 0) {
-		/* there were regions which we needed to compact but we couldn't compact so at least sweep them to ensure that their stats are correct */
-		_reclaimDelegate.performAtomicSweep(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode);
-	}
+		if (regionsSkippedByCompactorRequiringSweep > 0) {
+			/* there were regions which we needed to compact but we couldn't compact so at least sweep them to ensure that their stats are correct */
+			_reclaimDelegate.performAtomicSweep(env, allocDescription, env->_cycleState->_activeSubSpace, env->_cycleState->_gcCode);
+		}
 
-	/* calculatePGCCompactionRate() has to be after PGC due to half of Eden regions has not been marked after final GMP (the sweep could not collect those regions) */
-	/* calculatePGCCompactionRate() has to be before estimateReclaimableRegions(), which need to use the result of calculatePGCCompactionRate() - region->_defragmentationTarget */
-	_schedulingDelegate.recalculateRatesOnFirstPGCAfterGMP(env);
+		/* calculatePGCCompactionRate() has to be after PGC due to half of Eden regions has not been marked after final GMP (the sweep could not collect those regions) */
+		/* calculatePGCCompactionRate() has to be before estimateReclaimableRegions(), which need to use the result of calculatePGCCompactionRate() - region->_defragmentationTarget */
+		_schedulingDelegate.recalculateRatesOnFirstPGCAfterGMP(env);
 
-	/* Need to understand how to do the estimates here found within the following two calls */
-	UDATA defragmentReclaimableRegions = 0;
-	UDATA reclaimableRegions = 0;
-	_reclaimDelegate.estimateReclaimableRegions(env, _schedulingDelegate.getAverageEmptinessOfCopyForwardedRegions(), &reclaimableRegions, &defragmentReclaimableRegions);
-	_schedulingDelegate.partialGarbageCollectCompleted(env, reclaimableRegions, defragmentReclaimableRegions);
+		/* Need to understand how to do the estimates here found within the following two calls */
+		UDATA defragmentReclaimableRegions = 0;
+		UDATA reclaimableRegions = 0;
+		_reclaimDelegate.estimateReclaimableRegions(env, _schedulingDelegate.getAverageEmptinessOfCopyForwardedRegions(), &reclaimableRegions, &defragmentReclaimableRegions);
+		_schedulingDelegate.partialGarbageCollectCompleted(env, reclaimableRegions, defragmentReclaimableRegions);
 
-	if (_extensions->tarokUseProjectedSurvivalCollectionSet) {
-		_projectedSurvivalCollectionSetDelegate.deleteRegionCollectionSetForPartialGC(env);
-	} else {
-		_collectionSetDelegate.deleteRegionCollectionSetForPartialGC(env);
-	}
+		if (_extensions->tarokUseProjectedSurvivalCollectionSet) {
+			_projectedSurvivalCollectionSetDelegate.deleteRegionCollectionSetForPartialGC(env);
+		} else {
+			_collectionSetDelegate.deleteRegionCollectionSetForPartialGC(env);
+		}
 
-	Assert_MM_false(_workPacketsForGlobalGC->getOverflowFlag());
-	Assert_MM_false(_workPacketsForPartialGC->getOverflowFlag());
+		Assert_MM_false(_workPacketsForGlobalGC->getOverflowFlag());
+		Assert_MM_false(_workPacketsForPartialGC->getOverflowFlag());
 
-	if (_extensions->fvtest_tarokVerifyMarkMapClosure) {
-		verifyMarkMapClosure(env, env->_cycleState->_markMap);
+		if (_extensions->fvtest_tarokVerifyMarkMapClosure) {
+			verifyMarkMapClosure(env, env->_cycleState->_markMap);
+		}
 	}
 		
 	Trc_MM_IncrementalGenerationalGC_partialGarbageCollectUsingCopyForward_Exit(env->getLanguageVMThread());
@@ -1985,14 +2027,22 @@ MM_IncrementalGenerationalGC::isConcurrentWorkAvailable(MM_EnvironmentBase *env)
 {
 	// TODO: This will also need to be modified. Add something like:
 	// _delegate->isConcurrentWorkAvailable(env) which calls the isConcurrentWorkAvailable from copyForward to check the following:
-	// bool isConcurrentPGCPhaseOn = (concurrent_phase_scan == _concurrentPhase);
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	bool isConcurrentCopyForwardEnabled = _extensions->isConcurrentCopyForwardEnabled();
+	bool isConcurrentCopyForwardRunning = _copyForwardDelegate.isConcurrentCycleInProgress();
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	bool isConcurrentEnabled = _extensions->tarokEnableConcurrentGMP;
 	bool isGMPRunning = isGlobalMarkPhaseRunning();
 	bool isProcessingWorkPackets = MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState;
 	bool isStillPermittedToRun = !_forceConcurrentTermination;
 	bool isGMPWorkAvailable = _globalMarkPhaseIncrementBytesStillToScan > 0;
-	
-	return isConcurrentEnabled && isGMPRunning && isProcessingWorkPackets && isStillPermittedToRun && isGMPWorkAvailable; // Then add ...) || isConcurrentPGCPhaseOn;
+
+	bool concurrentWorkAvailable = isConcurrentEnabled && isGMPRunning && isProcessingWorkPackets && isStillPermittedToRun && isGMPWorkAvailable;
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	concurrentWorkAvailable  = concurrentWorkAvailable || (isConcurrentCopyForwardEnabled && isConcurrentCopyForwardRunning);
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
+	return concurrentWorkAvailable;
 }
 
 void
@@ -2014,11 +2064,11 @@ MM_IncrementalGenerationalGC::preConcurrentInitializeStatsAndReport(MM_Environme
 			stats);
 }
 
-// TODO: This need to change as well!!!!
-// Use _copyForwardDelegate to call something in delegate to only then copy in copyForwardScheme
 uintptr_t
 MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *envBase)
 {
+	printf("#### TID: %zu.. Is this ever called????????\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 
 	/* note that we can't check isConcurrentWorkAvailable at this point since another thread could have set _forceConcurrentTermination since the
@@ -2030,25 +2080,37 @@ MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *en
 
 	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.clear();
 
+	UDATA bytesConcurrentlyScanned = 0;
+
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
-	if (_extensions->isConcurrentCopyForwardEnabled()) {
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCopyForwardPhase()) {
+
+		// TODO: What else do we need to do BEFORE we trigger the second STW PGC phase?
+		//	 No need to report PGC start nor end since we only report concurrent-start and that's already taken care of???
+
 		_mainGCThread.setWorkSTWDone(true);
-	}
+
+		_copyForwardDelegate.performCopyForwardForConcurrentPartialGC(env); // TODO: Is this the correct call?
+
+		// TODO: What else do we need to do AFTER we trigger the second STW PGC phase?
+	} else
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	
-	/* We pass a pointer to _forceConcurrentTermination so that we can cause the concurrent to terminate early by setting the
-	 * flag to true if we want to interrupt it so that the main thread returns to the control mutex in order to receive a
-	 * new GC request.
-	 */
-	UDATA bytesConcurrentlyScanned = _globalMarkDelegate.performMarkConcurrent(env, _globalMarkPhaseIncrementBytesStillToScan, &_forceConcurrentTermination);
-	_globalMarkPhaseIncrementBytesStillToScan = MM_Math::saturatingSubtract(_globalMarkPhaseIncrementBytesStillToScan, bytesConcurrentlyScanned);
+	{
+		/* We pass a pointer to _forceConcurrentTermination so that we can cause the concurrent to terminate early by setting the
+		 * flag to true if we want to interrupt it so that the main thread returns to the control mutex in order to receive a
+		 * new GC request.
+		 */
+		bytesConcurrentlyScanned = _globalMarkDelegate.performMarkConcurrent(env, _globalMarkPhaseIncrementBytesStillToScan, &_forceConcurrentTermination);
+		_globalMarkPhaseIncrementBytesStillToScan = MM_Math::saturatingSubtract(_globalMarkPhaseIncrementBytesStillToScan, bytesConcurrentlyScanned);
 	
-	/* Accumulate the mark increment stats into persistent GMP state*/
-	_persistentGlobalMarkPhaseState._vlhgcCycleStats.merge(&static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats);
+		/* Accumulate the mark increment stats into persistent GMP state*/
+		_persistentGlobalMarkPhaseState._vlhgcCycleStats.merge(&static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats);
 
-	/* Release any resources that might be bound to this main thread,
-	 * since it may be implicit and more importantly change for other phases of the cycle */
-	_interRegionRememberedSet->releaseCardBufferControlBlockListForThread(env, env);
+		/* Release any resources that might be bound to this main thread,
+		 * since it may be implicit and more importantly change for other phases of the cycle */
+		_interRegionRememberedSet->releaseCardBufferControlBlockListForThread(env, env);
+	}
 	
 	/* return the number of bytes scanned since the caller needs to pass it into postConcurrentUpdateStatsAndReport for stats reporting */
 	return bytesConcurrentlyScanned;

@@ -5446,23 +5446,26 @@ MM_CopyForwardScheme::randomDecideForceNonEvacuatedRegion(UDATA ratio) {
 bool
 MM_CopyForwardScheme::copyForwardIncrementCollectionSet(MM_EnvironmentVLHGC *env)
 {
-		PORT_ACCESS_FROM_ENVIRONMENT(env);
+	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
 	/* stats management */
 	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._startTime = j9time_hires_clock();
-	/* Clear the gc statistics */
-	clearGCStats(env);
 
-	/* Perform any pre copy forwarding changes to the region set */
-	preProcessRegions(env);
+	if (!isConcurrentCycleInProgress()) {
+		/* Clear the gc statistics */
+		clearGCStats(env);
 
-	if (0 != _regionCountCannotBeEvacuated) {
-		/* need to run Hybrid mode, reuse InputListMonitor for both workPackets and ScanCopyCache */
-		_workQueueMonitorPtr = env->_cycleState->_workPackets->getInputListMonitorPtr();
-		_workQueueWaitCountPtr = env->_cycleState->_workPackets->getInputListWaitCountPtr();
+		/* Perform any pre copy forwarding changes to the region set */
+		preProcessRegions(env);
+
+		if (0 != _regionCountCannotBeEvacuated) {
+			/* need to run Hybrid mode, reuse InputListMonitor for both workPackets and ScanCopyCache */
+			_workQueueMonitorPtr = env->_cycleState->_workPackets->getInputListMonitorPtr();
+			_workQueueWaitCountPtr = env->_cycleState->_workPackets->getInputListWaitCountPtr();
+		}
+		/* Perform any main-specific setup */
+		mainSetupForCopyForward(env);
 	}
-	/* Perform any main-specific setup */
-	mainSetupForCopyForward(env);
 
 	// TODO: Revise
 	/* And perform the copy forward */
@@ -5470,31 +5473,33 @@ MM_CopyForwardScheme::copyForwardIncrementCollectionSet(MM_EnvironmentVLHGC *env
 	//_dispatcher->run(env, &copyForwardTask);
 	copyForwardIncremental(env);
 
-	mainCleanupForCopyForward(env);
+	if (!isConcurrentCycleInProgress()) {
+		mainCleanupForCopyForward(env);
 
-	/* Record the completion time of the copy forward cycle */
-	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._endTime = j9time_hires_clock();
+		/* Record the completion time of the copy forward cycle */
+		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._endTime = j9time_hires_clock();
 
-	updateLeafRegions(env);
+		updateLeafRegions(env);
 
-	/* We used memory from the ACs for survivor space - make sure it doesn't hang around as allocation space */
-	clearReservedRegionLists(env);
-	_extensions->globalAllocationManager->flushAllocationContexts(env);
+		/* We used memory from the ACs for survivor space - make sure it doesn't hang around as allocation space */
+		clearReservedRegionLists(env);
+		_extensions->globalAllocationManager->flushAllocationContexts(env);
 
-	copyForwardCompletedSuccessfully(env);
+		copyForwardCompletedSuccessfully(env);
 
-	if(_extensions->tarokEnableExpensiveAssertions) {
-		/* Verify the result of the copy forward operation (heap integrity, etc) */
-		verifyCopyForwardResult(MM_EnvironmentVLHGC::getEnvironment(env));
+		if(_extensions->tarokEnableExpensiveAssertions) {
+			/* Verify the result of the copy forward operation (heap integrity, etc) */
+			verifyCopyForwardResult(MM_EnvironmentVLHGC::getEnvironment(env));
+		}
+
+		if (0 != _regionCountCannotBeEvacuated) {
+			_workQueueMonitorPtr = &_scanCacheMonitor;
+			_workQueueWaitCountPtr = &_scanCacheWaitCount;
+		}
+
+		/* Do any final work to regions in order to release them back to the main collector implementation */
+		postProcessRegions(env);
 	}
-
-	if (0 != _regionCountCannotBeEvacuated) {
-		_workQueueMonitorPtr = &_scanCacheMonitor;
-		_workQueueWaitCountPtr = &_scanCacheWaitCount;
-	}
-
-	/* Do any final work to regions in order to release them back to the main collector implementation */
-	postProcessRegions(env);
 
 	return copyForwardCompletedSuccessfully(env);
 }
@@ -5502,7 +5507,7 @@ MM_CopyForwardScheme::copyForwardIncrementCollectionSet(MM_EnvironmentVLHGC *env
 bool
 MM_CopyForwardScheme::copyForwardInit(MM_EnvironmentVLHGC *env)
 {
-	// TODO: Use threadIterator like scavenger??
+	// TODO: Do we need to setup mutator threads here just like scavengeInit??
 	return false;
 }
 
@@ -5510,6 +5515,8 @@ bool
 MM_CopyForwardScheme::copyForwardRoots(MM_EnvironmentVLHGC *env)
 {
 	Assert_MM_true(concurrent_phase_roots == _concurrentPhase);
+	// TODO: Overkill but we must make sure we have Exclusive VM access
+	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
 
 	MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, MM_ConcurrentCopyForwardSchemeTask::COPY_FORWARD_ROOTS, env->_cycleState);
 	_dispatcher->run(env, &copyForwardTask);
@@ -5521,17 +5528,22 @@ bool
 MM_CopyForwardScheme::copyForwardScan(MM_EnvironmentVLHGC *env)
 {
 	Assert_MM_true(concurrent_phase_scan == _concurrentPhase);
+	// TODO: We must make sure we have Exclusive VM access.
+	// 	 copyForwardScan will be the only one that will be running concurrently with mutator threads in the future
+	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
 
 	MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, MM_ConcurrentCopyForwardSchemeTask::COPY_FORWARD_SCAN, env->_cycleState);
 	_dispatcher->run(env, &copyForwardTask);
 
-	return false;
+	return true;
 }
 
 bool
 MM_CopyForwardScheme::copyForwardComplete(MM_EnvironmentVLHGC *env)
 {
 	Assert_MM_true(concurrent_phase_complete == _concurrentPhase);
+	// TODO: Overkill but we must make sure we have Exclusive VM access
+	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
 
 	MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, MM_ConcurrentCopyForwardSchemeTask::COPY_FORWARD_COMPLETE, env->_cycleState);
 	_dispatcher->run(env, &copyForwardTask);
@@ -5542,6 +5554,8 @@ MM_CopyForwardScheme::copyForwardComplete(MM_EnvironmentVLHGC *env)
 bool
 MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 {
+	printf("### TID: %zu.. Inside MM_CopyForwardScheme::copyForwardIncremental!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
 	bool result = false;
 	bool timeout = false;
@@ -5549,13 +5563,17 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 	while (!timeout) {
 
 		switch (_concurrentPhase) {
-		case concurrent_phase_idle:
+		case concurrent_phase_idle: // Part of 1st PGC increment
 		{
+			printf("\t### TID: %zu.. Inside case concurrent_phase_idle, changing state from concurrent_phase_idle to concurrent_phase_init\n", (uintptr_t)pthread_self());
+			fflush(stdout);
 			_concurrentPhase = concurrent_phase_init;
 			continue;
 		}
-		case concurrent_phase_init:
+		case concurrent_phase_init: // Part of 1st PGC increment
 		{
+			printf("\t### TID: %zu.. Inside case concurrent_phase_init, about to call copyForwardInit()\n", (uintptr_t)pthread_self());
+			fflush(stdout);
 			/* initialize the mark map */
 			copyForwardInit(env);
 
@@ -5563,8 +5581,10 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 		}
 			break;
 
-		case concurrent_phase_roots:
+		case concurrent_phase_roots: // Part of 1st PGC increment
 		{
+			printf("\t### TID: %zu.. Inside case concurrent_phase_roots, about to call copyForwardRoots()\n", (uintptr_t)pthread_self());
+			fflush(stdout);
 			/* initialize all the roots */
 			copyForwardRoots(env);
 
@@ -5573,6 +5593,7 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 
 			_concurrentPhase = concurrent_phase_scan;
 
+			// TODO: Check for abortion??
 			//if (isBackOutFlagRaised()) {
 				/* if we aborted during root processing, continue with the cycle while still in STW mode */
 				//mergeIncrementGCStats(env, false);
@@ -5584,11 +5605,11 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 		}
 			break;
 
-		case concurrent_phase_scan:
+		case concurrent_phase_scan: // Part of 2nd PGC increment
 		{
-			/* This is just for corner cases that must be run in STW mode.
-			 * Default main scan phase is done within mainThreadConcurrentCollect. */
-
+			printf("\t### TID: %zu.. Inside case concurrent_phase_scan, about to call copyForwardScan()...\n", (uintptr_t)pthread_self());
+			fflush(stdout);
+			// copyForwardScan returns true
 			timeout = copyForwardScan(env);
 
 			_concurrentPhase = concurrent_phase_complete;
@@ -5598,8 +5619,10 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 			continue;
 		}
 
-		case concurrent_phase_complete:
+		case concurrent_phase_complete: // Part of 3rd PGC increment
 		{
+			printf("\t### TID: %zu.. Inside case concurrent_phase_complete about to call copyForwardComplete()...\n", (uintptr_t)pthread_self());
+			fflush(stdout);
 			copyForwardComplete(env);
 
 			result = true;
@@ -5619,7 +5642,10 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::workThreadProcessRoots(MM_EnvironmentVLHGC *env)
 {
+	printf("\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadProcessRoots!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	/* GC init (set up per-invocation values) */
+	// TODO: workerSetupForCopyForward() is similar to what scavengeInit does for mutator threads. Should we move this to copyForwardInit??
 	workerSetupForCopyForward(env);
 
 	env->_workStack.prepareForWork(env, env->_cycleState->_workPackets);
@@ -5697,12 +5723,15 @@ MM_CopyForwardScheme::workThreadProcessRoots(MM_EnvironmentVLHGC *env)
 	/* scan roots before cleaning the card table since the roots give us more concrete NUMA recommendations */
 	scanRoots(env);
 
-	/* TODO: check if abort happened during root scanning (and optimize in any other way) */
+	/* TODO: do we need to check if abort happened during root scanning (and optimize in any other way) */
 	if(abortFlagRaised()) {
 		Assert_MM_true(_abortInProgress);
 		/* rescan to fix up root slots, but also to complete scanning of roots that we miss to mark/push in original root scanning */
 		scanRoots(env);
 	}
+
+	// TODO: do we need threadReleaseCaches() ? Used in concurrent scavenger. Maybe we'll only need whenever we introduce the concurrent phase in PGC
+
 	/* No matter what happens, always sum up the gc stats */
 	mergeGCStats(env);
 }
@@ -5710,14 +5739,17 @@ MM_CopyForwardScheme::workThreadProcessRoots(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::workThreadScan(MM_EnvironmentVLHGC *env)
 {
+	printf("\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	/* Clear GC stats */
+
 	clearGCStats(env);
 
 	cleanCardTable(env);
 
 	completeScan(env);
 
-	/* TODO: check if abort happened during cardTable clearing (and optimize in any other way) */
+	/* TODO: do we need to check if abort happened during cardTable clearing (and optimize in any other way) */
 	if(abortFlagRaised()) {
 		Assert_MM_true(_abortInProgress);
 		/* rescan to fix up root slots, but also to complete scanning of roots that we miss to mark/push in original root scanning */
@@ -5752,7 +5784,7 @@ MM_CopyForwardScheme::workThreadScan(MM_EnvironmentVLHGC *env)
 		env->_currentTask->releaseSynchronizedGCThreads(env);
 	}
 
-	// TODO: threadReleaseCaches() ? Used in concurrent scavenger
+	// TODO: do we need threadReleaseCaches() ? Used in concurrent scavenger. Maybe we'll only need whenever we introduce the concurrent phase in PGC
 
 	/* No matter what happens, always sum up the gc stats */
 	mergeGCStats(env);
@@ -5761,6 +5793,8 @@ MM_CopyForwardScheme::workThreadScan(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::workThreadComplete(MM_EnvironmentVLHGC *env)
 {
+	printf("\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadComplete!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	/* Clear GC stats */
 	clearGCStats(env);
 
@@ -5768,11 +5802,11 @@ MM_CopyForwardScheme::workThreadComplete(MM_EnvironmentVLHGC *env)
 	rootClearer.setStringTableAsRoot(!isCollectStringConstantsEnabled());
 	rootClearer.scanClearable(env);
 
-	// TODO: Do we need to call cimpleteScan here????
-	// This will only do something if there's work left to do??
+	// TODO: Do we need to call completeScan here????
+	// This will only do something if there's work left to do?? Is this benign?
 	completeScan(env);
 
-	/* Clearable must not uncover any new work */
+	/* Clearable must not uncover any new work; meaning all work should have been completed by this point */
 	Assert_MM_true(NULL == env->_workStack.popNoWait(env));
 
 	env->_currentTask->synchronizeGCThreads(env, UNIQUE_ID);
