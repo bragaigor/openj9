@@ -925,6 +925,8 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
 	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	{
+		printf("### TID: %zu.. Inside runPartialGarbageCollect and isConcurrentCopyForwardEnabled: %d, isFirstPGC: %d\n", (uintptr_t)pthread_self(), (int)isConcurrentCopyForwardEnabled, (int)!_copyForwardDelegate.isConcurrentCycleInProgress());
+		fflush(stdout);
 		/* Flush non-allocation caches for update purposes (verbose) and safety (member deletion) */
 		GC_OMRVMInterface::flushNonAllocationCaches(env);
 		/* Flush allocation caches */
@@ -957,12 +959,18 @@ MM_IncrementalGenerationalGC::runPartialGarbageCollect(MM_EnvironmentVLHGC *env,
         //       - concurrent_phase_scan -> concurrent_phase_complete
         // Then for the last STW PGC phase, this method is called again to make the transition:
         //       - concurrent_phase_complete -> concurrent_phase_idle
+	printf("### TID: %zu.. Inside runPartialGarbageCollect and about to call partialGarbageCollect!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	partialGarbageCollect(env, allocDescription);
+	printf("### TID: %zu.. Inside runPartialGarbageCollect and just returned from partialGarbageCollect call!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
 	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	{
+		printf("### TID: %zu.. Inside runPartialGarbageCollect and isConcurrentCopyForwardEnabled: %d, isLastPGC: %d\n", (uintptr_t)pthread_self(), (int)isConcurrentCopyForwardEnabled, (int)!_copyForwardDelegate.isConcurrentCycleInProgress());
+		fflush(stdout);
 		if (performExpensiveAssertions) {
 			assertWorkPacketsEmpty(env, _workPacketsForPartialGC);
 			assertTableClean(env, isGlobalMarkPhaseRunning() ? CARD_GMP_MUST_SCAN : CARD_CLEAN);
@@ -1228,7 +1236,7 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 	
 	Assert_MM_false(_workPacketsForGlobalGC->getOverflowFlag());
 	Assert_MM_false(_workPacketsForPartialGC->getOverflowFlag());
-	Assert_MM_true(0 == static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.getTotalStallTime());
+	//Assert_MM_true(0 == static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.getTotalStallTime()); // TODO: Update as stallTime might be zero for 3rd concurrent PGC phase
 
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
 	//Assert_MM_false(_currentPhaseConcurrent);
@@ -1258,6 +1266,8 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && firstIncrement))
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	{
+		printf("\t### TID: %zu.. Inside partialGarbageCollect, BEFORE partialGarbageCollectUsingCopyForward concurrent PGC is not enabled or this is first concurrent PGC increment\n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		setupBeforePartialGC(env, env->_cycleState->_gcCode);
 		if (isGlobalMarkPhaseRunning()) {
 			/* since we have a GMP running, the PGC will need to know about it to find roots in its mark map */
@@ -1311,6 +1321,8 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
         if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && lastIncrement))
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	{
+		printf("\t### TID: %zu.. Inside partialGarbageCollect, AFTER partialGarbageCollectUsingCopyForward concurrent PGC is not enabled or this is first concurrent PGC increment\n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		env->_cycleState->_workPackets = NULL;
 		env->_cycleState->_markMap = NULL;
 
@@ -1326,7 +1338,8 @@ MM_IncrementalGenerationalGC::partialGarbageCollect(MM_EnvironmentVLHGC *env, MM
 		incrementRegionAges(env, _taxationThreshold, true);
 	}
 
-	reportGCCycleFinalIncrementEnding(env);
+	reportGCCycleFinalIncrementEnding(env); // TODO: Should this only be called at the end of the concurrent PGC cycle?
+	// TODO: Nonetheless, the heap should not get corrupted after the first concurrent PGC phase!!!!!!!!!
 	reportGCIncrementEnd(env);
 	reportPGCEnd(env);
 	if (lastIncrement) {
@@ -1360,6 +1373,8 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 	if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	{
+		printf("\t\t### TID: %zu.. Inside partialGarbageCollectUsingCopyForward BEFORE calling delegate!!! \n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		/* Record stats before a copy forward */
 		UDATA freeMemoryForSurvivor = _extensions->getHeap()->getActualFreeMemorySize();
 		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._copyForwardStats._freeMemoryBefore = freeMemoryForSurvivor;
@@ -1432,7 +1447,11 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
 	if (_extensions->isConcurrentCopyForwardEnabled()) {
 		/* Responsible for concurrent PGC increments */
+		printf("\t\t### TID: %zu.. Inside partialGarbageCollectUsingCopyForward about to call delegate!!!!\n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		successful = _copyForwardDelegate.performCopyForwardForConcurrentPartialGC(env);
+		printf("\t\t### TID: %zu.. Inside partialGarbageCollectUsingCopyForward JUST CALLED delegate!!!!\n", (uintptr_t)pthread_self());
+		fflush(stdout);
 	} else
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	{
@@ -1443,6 +1462,8 @@ MM_IncrementalGenerationalGC::partialGarbageCollectUsingCopyForward(MM_Environme
         if (!isConcurrentCopyForwardEnabled || (isConcurrentCopyForwardEnabled && !_copyForwardDelegate.isConcurrentCycleInProgress()))
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	{
+		printf("\t\t### TID: %zu.. Inside partialGarbageCollectUsingCopyForward AFTER calling delegate!!! \n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		U_64 endTimeOfCopyForward = j9time_hires_clock();
 
 		/* Record stats after a copy forward */
@@ -2049,12 +2070,22 @@ void
 MM_IncrementalGenerationalGC::preConcurrentInitializeStatsAndReport(MM_EnvironmentBase *env, MM_ConcurrentPhaseStatsBase *stats)
 {
 	Assert_MM_true(isConcurrentWorkAvailable(env));
-	Assert_MM_true(NULL == env->_cycleState);
+	//Assert_MM_true(NULL == env->_cycleState); // TODO: Should preConcurrentInitializeStatsAndReport ever be called in case of concurrent copy forward or should it be modified?
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
-	stats->_cycleID = _persistentGlobalMarkPhaseState._verboseContextID;
-	stats->_scanTargetInBytes = _globalMarkPhaseIncrementBytesStillToScan;
-	env->_cycleState = &_persistentGlobalMarkPhaseState;
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCycleInProgress()) {
+		// TODO: No need to update any state?
+		printf("\t### TID: %zu. Inside preConcurrentInitializeStatsAndReport and no need to update anything???????\n", (uintptr_t)pthread_self());
+		fflush(stdout);
+		/* noop? */
+	} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		stats->_cycleID = _persistentGlobalMarkPhaseState._verboseContextID;
+		stats->_scanTargetInBytes = _globalMarkPhaseIncrementBytesStillToScan;
+		env->_cycleState = &_persistentGlobalMarkPhaseState;
+	}
 	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._markStats._startTime = j9time_hires_clock();
 	TRIGGER_J9HOOK_MM_PRIVATE_CONCURRENT_PHASE_START(
 			_extensions->privateHookInterface,
@@ -2071,32 +2102,28 @@ MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *en
 	fflush(stdout);
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
 
+	UDATA bytesConcurrentlyScanned = 0;
+
 	/* note that we can't check isConcurrentWorkAvailable at this point since another thread could have set _forceConcurrentTermination since the
 	 * main thread calls this outside of the control monitor
 	 */
-	Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
-	Assert_MM_true(isGlobalMarkPhaseRunning());
-	Assert_MM_true(MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState);
-
-	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.clear();
-
-	UDATA bytesConcurrentlyScanned = 0;
-
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
-	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCopyForwardPhase()) {
-
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCycleInProgress()) {
+		// TODO: Create the equivalent of _persistentGlobalMarkPhaseState for concurrent copy forward. Say: _persistentCopyForwardPhaseState
 		// TODO: What else do we need to do BEFORE we trigger the second STW PGC phase?
-		//	 No need to report PGC start nor end since we only report concurrent-start and that's already taken care of???
-
-		_mainGCThread.setWorkSTWDone(true);
-
-		_copyForwardDelegate.performCopyForwardForConcurrentPartialGC(env); // TODO: Is this the correct call?
+		// 	 No need to report PGC start nor end since we only report concurrent-start and that's already taken care of???
+		_copyForwardDelegate.performCopyForwardForConcurrentPartialGC(env);
 
 		// TODO: What else do we need to do AFTER we trigger the second STW PGC phase?
 	} else
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
-	
 	{
+		Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
+		Assert_MM_true(isGlobalMarkPhaseRunning());
+		Assert_MM_true(MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState);
+
+		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.clear();
+
 		/* We pass a pointer to _forceConcurrentTermination so that we can cause the concurrent to terminate early by setting the
 		 * flag to true if we want to interrupt it so that the main thread returns to the control mutex in order to receive a
 		 * new GC request.
@@ -2119,8 +2146,15 @@ MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *en
 void
 MM_IncrementalGenerationalGC::postConcurrentUpdateStatsAndReport(MM_EnvironmentBase *env, MM_ConcurrentPhaseStatsBase *stats, UDATA bytesConcurrentlyScanned)
 {
-	Assert_MM_false(isConcurrentWorkAvailable(env));
-	Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCycleInProgress()) {
+		// TODO: Create asserts for concurrent copy forward
+	} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		Assert_MM_false(isConcurrentWorkAvailable(env));
+		Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
+	}
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
 	stats->_bytesScanned = bytesConcurrentlyScanned;
@@ -2132,7 +2166,14 @@ MM_IncrementalGenerationalGC::postConcurrentUpdateStatsAndReport(MM_EnvironmentB
 			j9time_hires_clock(),
 			J9HOOK_MM_PRIVATE_CONCURRENT_PHASE_END,
 			stats);
-	env->_cycleState = NULL;
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCycleInProgress()) {
+		// noop??
+	} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		env->_cycleState = NULL;
+	}
 }
 
 void
@@ -2320,6 +2361,8 @@ MM_IncrementalGenerationalGC::exportStats(MM_EnvironmentVLHGC *env, MM_Collectio
 						}
 					}
 				} else {
+					printf("### TID: %zu. Inside exportStats and spine: %p, GC_ObjectModel::SCAN_PRIMITIVE_ARRAY_OBJECT: %zu, GC_ObjectModel::SCAN_POINTER_ARRAY_OBJECT: %zu, scanType: %zu!!!!!\n", (uintptr_t)pthread_self(), (void *)spine, (uintptr_t)GC_ObjectModel::SCAN_PRIMITIVE_ARRAY_OBJECT, (uintptr_t) GC_ObjectModel::SCAN_POINTER_ARRAY_OBJECT, (uintptr_t)_extensions->objectModel.getScanType((J9Object *)spine));
+					fflush(stdout);
 					Assert_MM_true(GC_ObjectModel::SCAN_PRIMITIVE_ARRAY_OBJECT == _extensions->objectModel.getScanType((J9Object *)spine));
 					stats->_arrayletPrimitiveLeaves += 1;
 					GC_SlotObject firstArrayletLeafSlot(_javaVM->omrVM, _extensions->indexableObjectModel.getArrayoidPointer(spine));

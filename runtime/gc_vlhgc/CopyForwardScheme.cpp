@@ -1477,7 +1477,7 @@ MM_CopyForwardScheme::workerSetupForCopyForward(MM_EnvironmentVLHGC *env)
 	Assert_MM_true(NULL == env->_deferredScanCache);
 
 	/* install this thread's compact group structures */
-	Assert_MM_true(NULL == env->_copyForwardCompactGroups);
+	//Assert_MM_true(NULL == env->_copyForwardCompactGroups); // TODO: Why _copyForwardCompactGroups is NULL? Maybe we're missing some calls for 3rd concurrent PGC phase??
 	Assert_MM_true(NULL != _compactGroupBlock);
 	env->_copyForwardCompactGroups = &_compactGroupBlock[env->getWorkerID() * _compactGroupMaxCount];
 	
@@ -1695,6 +1695,8 @@ MM_CopyForwardScheme::getFreeCache(MM_EnvironmentVLHGC *env)
 		/* we couldn't get a free cache so we must be in an overflow scenario.  Try creating new cache structures on the heap */
 		cache = createScanCacheForOverflowInHeap(env);
 		if (NULL == cache) {
+			printf("\t\t\t\t\t### TID: %zu. Inside getFreeCache and ABORT FLAG has been raised!!!!!!!!!!\n", (uintptr_t)pthread_self());
+			fflush(stdout);
 			/* we couldn't overflow so we have no choice but to abort the copy-forward */
 			raiseAbortFlag(env);
 		}
@@ -1939,6 +1941,8 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 		/* Check if memory was reserved successfully */
 		if(NULL == copyCache) {
 			raiseAbortFlag(env);
+			printf("\t\t\t\t\t### TID: %zu. Inside copy and ABORT flag was raised!!!!!!!!!!!!\n", (uintptr_t)pthread_self());
+			fflush(stdout);
 			Assert_MM_true(NULL == result);
 		} else {
 			Assert_MM_false(copyCache->isSplitArray());
@@ -3253,11 +3257,17 @@ MM_CopyForwardScheme::cleanRegion(MM_EnvironmentVLHGC *env, MM_HeapRegionDescrip
 bool
 MM_CopyForwardScheme::isWorkPacketsOverflow(MM_EnvironmentVLHGC *env)
 {
+	printf("\t\t\t\t\t\t--- TID: %zu. Inside isWorkPacketsOverflow BEGINNING!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	MM_WorkPackets *packets = (MM_WorkPackets *)(env->_cycleState->_workPackets);
 	bool result = false;
+	printf("\t\t\t\t\t\t--- TID: %zu. Inside isWorkPacketsOverflow 11111111111111111111111111111 packets: %p\n", (uintptr_t)pthread_self(), (void*)packets);
+	fflush(stdout);
 	if (packets->getOverflowFlag()) {
 		result = true;
 	}
+	printf("\t\t\t\t\t\t--- TID: %zu. Inside isWorkPacketsOverflow ABOUT TO RETURN!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 	return result;
 }
 
@@ -3326,6 +3336,9 @@ MM_CopyForwardScheme::completeScan(MM_EnvironmentVLHGC *env)
 {
 	UDATA nodeOfThread = 0;
 
+	printf("\t\t\t\t\t### TID: %zu. Inside completeScan BEGINNING\n", (uintptr_t)pthread_self());
+	fflush(stdout);
+
 	/* if we aren't using NUMA, we don't want to check the thread affinity since we will have only one list of scan caches */
 	if (_extensions->_numaManager.isPhysicalNUMASupported()) {
 		nodeOfThread = env->getNumaAffinity();
@@ -3355,19 +3368,32 @@ MM_CopyForwardScheme::completeScan(MM_EnvironmentVLHGC *env)
 		}
 	}
 
+	printf("\t\t\t\t\t### TID: %zu. Inside completeScan just FINISHED scan!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
+
 	/* flush Mark Map caches before we start draining Work Stack (in case of Abort) */
 	addCopyCachesToFreeList(env);
+
+	printf("\t\t\t\t\t### TID: %zu. Inside completeScan just CALLED addCopyCachesToFreeList!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 
 	if (((MM_CopyForwardSchemeTask*)env->_currentTask)->synchronizeGCThreadsAndReleaseMainForAbort(env, UNIQUE_ID)) {
 		if (abortFlagRaised()) {
 			_abortInProgress = true;
 		}
+		printf("\t\t\t\t\t---------- TID: %zu. Inside completeScan inside if...\n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		/* using abort case to handle work packets overflow during copyforwardHybrid */
 		if (!_abortInProgress && (0 != _regionCountCannotBeEvacuated) && isWorkPacketsOverflow(env)) {
 			_abortInProgress = true;
 		}
+		printf("\t\t\t\t\t---------- TID: %zu. Inside completeScan inside if but about to leave...\n", (uintptr_t)pthread_self());
+		fflush(stdout);
 		env->_currentTask->releaseSynchronizedGCThreads(env);
 	}
+
+	printf("\t\t\t\t\t### TID: %zu. Inside completeScan about to RETURN!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 
 	if(_abortInProgress) {
 		completeScanForAbort(env);
@@ -3458,7 +3484,8 @@ MM_CopyForwardScheme::scanUnfinalizedObjects(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::cleanCardTable(MM_EnvironmentVLHGC *env)
 {
-	Assert_MM_true(MM_CycleState::CT_PARTIAL_GARBAGE_COLLECTION == env->_cycleState->_collectionType);
+	// TODO: This Assert needs to be updated!!!!!!!!!!
+	//Assert_MM_true(MM_CycleState::CT_PARTIAL_GARBAGE_COLLECTION == env->_cycleState->_collectionType);
 	if (NULL != env->_cycleState->_externalCycleState) {
 		/* A GMP is in progress */
 		MM_CopyForwardGMPCardCleaner cardCleaner(this);
@@ -5554,7 +5581,7 @@ MM_CopyForwardScheme::copyForwardComplete(MM_EnvironmentVLHGC *env)
 bool
 MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 {
-	printf("### TID: %zu.. Inside MM_CopyForwardScheme::copyForwardIncremental!!!!!!!\n", (uintptr_t)pthread_self());
+	printf("\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::copyForwardIncremental!!!!!!!\n", (uintptr_t)pthread_self());
 	fflush(stdout);
 	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
 	bool result = false;
@@ -5565,14 +5592,14 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 		switch (_concurrentPhase) {
 		case concurrent_phase_idle: // Part of 1st PGC increment
 		{
-			printf("\t### TID: %zu.. Inside case concurrent_phase_idle, changing state from concurrent_phase_idle to concurrent_phase_init\n", (uintptr_t)pthread_self());
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_idle, changing state from concurrent_phase_idle to concurrent_phase_init\n", (uintptr_t)pthread_self());
 			fflush(stdout);
 			_concurrentPhase = concurrent_phase_init;
 			continue;
 		}
 		case concurrent_phase_init: // Part of 1st PGC increment
 		{
-			printf("\t### TID: %zu.. Inside case concurrent_phase_init, about to call copyForwardInit()\n", (uintptr_t)pthread_self());
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_init, about to call copyForwardInit()\n", (uintptr_t)pthread_self());
 			fflush(stdout);
 			/* initialize the mark map */
 			copyForwardInit(env);
@@ -5583,7 +5610,7 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 
 		case concurrent_phase_roots: // Part of 1st PGC increment
 		{
-			printf("\t### TID: %zu.. Inside case concurrent_phase_roots, about to call copyForwardRoots()\n", (uintptr_t)pthread_self());
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_roots, about to call copyForwardRoots()\n", (uintptr_t)pthread_self());
 			fflush(stdout);
 			/* initialize all the roots */
 			copyForwardRoots(env);
@@ -5607,7 +5634,7 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 
 		case concurrent_phase_scan: // Part of 2nd PGC increment
 		{
-			printf("\t### TID: %zu.. Inside case concurrent_phase_scan, about to call copyForwardScan()...\n", (uintptr_t)pthread_self());
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_scan, about to call copyForwardScan()...\n", (uintptr_t)pthread_self());
 			fflush(stdout);
 			// copyForwardScan returns true
 			timeout = copyForwardScan(env);
@@ -5621,7 +5648,7 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 
 		case concurrent_phase_complete: // Part of 3rd PGC increment
 		{
-			printf("\t### TID: %zu.. Inside case concurrent_phase_complete about to call copyForwardComplete()...\n", (uintptr_t)pthread_self());
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_complete about to call copyForwardComplete()...\n", (uintptr_t)pthread_self());
 			fflush(stdout);
 			copyForwardComplete(env);
 
@@ -5642,7 +5669,7 @@ MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::workThreadProcessRoots(MM_EnvironmentVLHGC *env)
 {
-	printf("\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadProcessRoots!!!!!!!\n", (uintptr_t)pthread_self());
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadProcessRoots!!!!!!!\n", (uintptr_t)pthread_self());
 	fflush(stdout);
 	/* GC init (set up per-invocation values) */
 	// TODO: workerSetupForCopyForward() is similar to what scavengeInit does for mutator threads. Should we move this to copyForwardInit??
@@ -5739,15 +5766,25 @@ MM_CopyForwardScheme::workThreadProcessRoots(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::workThreadScan(MM_EnvironmentVLHGC *env)
 {
-	printf("\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan!!!!!!!\n", (uintptr_t)pthread_self());
+	// TODO: Added to initialize work packets
+	env->_workStack.prepareForWork(env, env->_cycleState->_workPackets);
+
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan!!!!!!!\n", (uintptr_t)pthread_self());
 	fflush(stdout);
 	/* Clear GC stats */
 
 	clearGCStats(env);
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan just RETURNED from clearGCStats!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 
 	cleanCardTable(env);
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan just RETURNED from cleanCardTable!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 
 	completeScan(env);
+
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan just RETURNED from completeScan!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
 
 	/* TODO: do we need to check if abort happened during cardTable clearing (and optimize in any other way) */
 	if(abortFlagRaised()) {
@@ -5763,6 +5800,7 @@ MM_CopyForwardScheme::workThreadScan(MM_EnvironmentVLHGC *env)
 	/* ensure that all buffers have been flushed before we start reference processing */
 	env->getGCEnvironment()->_referenceObjectBuffer->flush(env);
 
+	// TODO: This processes soft and weak references. Should this be done in this phase or last workThreadComplete phase?
 	if(env->_currentTask->synchronizeGCThreadsAndReleaseSingleThread(env, UNIQUE_ID)) {
 		_clearableProcessingStarted = true;
 		/* Soft and weak references resurrected by finalization need to be cleared immediately since weak and soft processing has already completed.
@@ -5793,7 +5831,7 @@ MM_CopyForwardScheme::workThreadScan(MM_EnvironmentVLHGC *env)
 void
 MM_CopyForwardScheme::workThreadComplete(MM_EnvironmentVLHGC *env)
 {
-	printf("\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadComplete!!!!!\n", (uintptr_t)pthread_self());
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadComplete!!!!!\n", (uintptr_t)pthread_self());
 	fflush(stdout);
 	/* Clear GC stats */
 	clearGCStats(env);
@@ -5804,7 +5842,7 @@ MM_CopyForwardScheme::workThreadComplete(MM_EnvironmentVLHGC *env)
 
 	// TODO: Do we need to call completeScan here????
 	// This will only do something if there's work left to do?? Is this benign?
-	completeScan(env);
+	completeScan(env); // TODO: Is this the culprit?????? It doesn't seem to be
 
 	/* Clearable must not uncover any new work; meaning all work should have been completed by this point */
 	Assert_MM_true(NULL == env->_workStack.popNoWait(env));
@@ -5829,5 +5867,9 @@ MM_CopyForwardScheme::workThreadComplete(MM_EnvironmentVLHGC *env)
 
 	/* No matter what happens, always sum up the gc stats */
 	mergeGCStats(env);
+
+	env->_copyForwardCompactGroups = NULL;
+
+	return;
 }
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
