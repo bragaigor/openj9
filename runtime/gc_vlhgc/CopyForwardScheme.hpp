@@ -1074,11 +1074,20 @@ public:
 	void kill(MM_EnvironmentVLHGC *env);
 
 	/**
+	 * Pre Copy Forward process. Clear GC stats, pre process regions and perform any main-specific setup
+	 */
+	void copyForwardPreProcess(MM_EnvironmentVLHGC *env);
+
+	/**
+	 * Post Copy Forward process. Sets persistent flag indicating if copy forward collection was successful or not.
+	 */
+	void copyForwardPostProcess(MM_EnvironmentVLHGC *env);
+
+	/**
 	 * Run a copy forward collection operation on the already determined collection set.
 	 * @param env[in] Main thread.
-	 * @return Flag indicating if the copy forward collection was successful or not.
 	 */
-	bool copyForwardCollectionSet(MM_EnvironmentVLHGC *env);
+	void copyForwardCollectionSet(MM_EnvironmentVLHGC *env);
 
 	/**
 	 * Return true if CopyForward is running under Hybrid mode
@@ -1092,6 +1101,24 @@ public:
 	{
 		_regionCountReservedNonEvacuated = regionCount;
 	}
+
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	/**
+	 * Run concurrent copy forward collection increment
+	 * @param env[in] Main thread.
+	 */
+	void concurrentCopyForwardCollectionSet(MM_EnvironmentVLHGC *env);
+
+	/**
+	 * True if concurrent CopyForward cycle is active at any point (STW or concurrent
+	 * task active, or even short gaps between STW and concurrent tasks). Equivalent to
+	 * isConcurrentCycleInProgress() from Scavenger
+	 */
+	MMINLINE bool isConcurrentCycleInProgress() {
+		/* Unimplemented */
+		return false;
+	}
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 
 	friend class MM_CopyForwardGMPCardCleaner;
 	friend class MM_CopyForwardNoGMPCardCleaner;

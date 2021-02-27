@@ -1555,8 +1555,8 @@ MM_CopyForwardScheme::mergeGCStats(MM_EnvironmentVLHGC *env)
 	}
 }
 
-bool
-MM_CopyForwardScheme::copyForwardCollectionSet(MM_EnvironmentVLHGC *env)
+void
+MM_CopyForwardScheme::copyForwardPreProcess(MM_EnvironmentVLHGC *env)
 {
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
@@ -1575,10 +1575,12 @@ MM_CopyForwardScheme::copyForwardCollectionSet(MM_EnvironmentVLHGC *env)
 	}
 	/* Perform any main-specific setup */
 	mainSetupForCopyForward(env);
+}
 
-	/* And perform the copy forward */
-	MM_CopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, env->_cycleState);
-	_dispatcher->run(env, &copyForwardTask);
+void
+MM_CopyForwardScheme::copyForwardPostProcess(MM_EnvironmentVLHGC *env)
+{
+	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
 	mainCleanupForCopyForward(env);
 	
@@ -1606,7 +1608,41 @@ MM_CopyForwardScheme::copyForwardCollectionSet(MM_EnvironmentVLHGC *env)
 	/* Do any final work to regions in order to release them back to the main collector implementation */
 	postProcessRegions(env);
 
-	return copyForwardCompletedSuccessfully(env);
+	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_abortFlagRaisedDuringPGC = copyForwardCompletedSuccessfully(env);
+}
+
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+void
+MM_CopyForwardScheme::concurrentCopyForwardCollectionSet(MM_EnvironmentVLHGC *env)
+{
+	/* isConcurrentCycleInProgress() tells us if this is the first PGC increment or not */
+	if (!isConcurrentCycleInProgress())
+	{
+		copyForwardPreProcess(env);
+	}
+
+	/* And perform the copy forward. Temporary as this will be updated to call concurrent copy forward state machine */
+	MM_CopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, env->_cycleState);
+	_dispatcher->run(env, &copyForwardTask);
+
+	/* isConcurrentCycleInProgress() tells us if this is the last PGC increment or not */
+	if (!isConcurrentCycleInProgress())
+	{
+		copyForwardPostProcess(env);
+	}
+}
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
+void
+MM_CopyForwardScheme::copyForwardCollectionSet(MM_EnvironmentVLHGC *env)
+{
+	copyForwardPreProcess(env);
+
+	/* And perform the copy forward */
+	MM_CopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, env->_cycleState);
+	_dispatcher->run(env, &copyForwardTask);
+
+	copyForwardPostProcess(env);
 }
 
 /**
