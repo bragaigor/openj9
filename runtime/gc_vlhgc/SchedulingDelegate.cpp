@@ -263,7 +263,11 @@ MM_SchedulingDelegate::partialGarbageCollectCompleted(MM_EnvironmentVLHGC *env, 
 		
 		/* estimate how many more regions we would have needed to avoid abort */
 		Assert_MM_true( (0 == copyForwardStats->_scanBytesEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount));
-		Assert_MM_true( (0 == copyForwardStats->_scanBytesNonEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount));
+		if (!((0 == copyForwardStats->_scanBytesNonEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount))) {
+			printf("\t\t### TID: %zu.. Inside partialGarbageCollectCompleted and copyForwardStats->_scanBytesNonEden: %zu, copyForwardStats->_aborted: %d, copyForwardStats->_nonEvacuateRegionCount: %zu\n", (uintptr_t)pthread_self(), (uintptr_t)copyForwardStats->_scanBytesNonEden, (int)copyForwardStats->_aborted, (uintptr_t)copyForwardStats->_nonEvacuateRegionCount);
+			fflush(stdout);
+		}
+		//Assert_MM_true( (0 == copyForwardStats->_scanBytesNonEden) || copyForwardStats->_aborted || (0 != copyForwardStats->_nonEvacuateRegionCount));
 		edenSurvivorCount += (copyForwardStats->_scanBytesEden + regionSize - 1) / regionSize;
 		nonEdenSurvivorCount += (copyForwardStats->_scanBytesNonEden + regionSize - 1) / regionSize;
 
