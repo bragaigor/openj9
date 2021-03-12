@@ -47,6 +47,7 @@
 #include "ClassLoaderClassesIterator.hpp"
 #include "ClassLoaderIterator.hpp"
 #include "ClassLoaderRememberedSet.hpp"
+#include "ConcurrentCopyForwardSchemeTask.hpp"
 #include "CopyForwardSchemeTask.hpp"
 #include "CompactGroupManager.hpp"
 #include "CompactGroupPersistentStats.hpp"
@@ -171,6 +172,11 @@ MM_CopyForwardScheme::MM_CopyForwardScheme(MM_EnvironmentVLHGC *env, MM_HeapRegi
 	, _failedToExpand(false)
 	, _shouldScanFinalizableObjects(false)
 	, _objectAlignmentInBytes(env->getObjectAlignmentInBytes())
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	, _mainGCThread(env)
+	, _concurrentPhase(concurrent_phase_idle)
+	, _currentPhaseConcurrent(false)
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 {
 	_typeId = __FUNCTION__;
 }
@@ -1621,9 +1627,7 @@ MM_CopyForwardScheme::concurrentCopyForwardCollectionSet(MM_EnvironmentVLHGC *en
 		copyForwardPreProcess(env);
 	}
 
-	/* And perform the copy forward. Temporary as this will be updated to call concurrent copy forward state machine */
-	MM_CopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, env->_cycleState);
-	_dispatcher->run(env, &copyForwardTask);
+	copyForwardIncremental(env);
 
 	/* isConcurrentCycleInProgress() tells us if this is the last PGC increment or not */
 	if (!isConcurrentCycleInProgress())
@@ -5399,3 +5403,312 @@ MM_CopyForwardScheme::randomDecideForceNonEvacuatedRegion(UDATA ratio) {
 	return ret;
 }
 
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+bool
+MM_CopyForwardScheme::copyForwardInit(MM_EnvironmentVLHGC *env)
+{
+	// TODO: Do we need to setup mutator threads here just like scavengeInit??
+	return false;
+}
+
+bool
+MM_CopyForwardScheme::copyForwardRoots(MM_EnvironmentVLHGC *env)
+{
+	Assert_MM_true(concurrent_phase_roots == _concurrentPhase);
+	// TODO: Overkill but we must make sure we have Exclusive VM access
+	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
+
+	MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, MM_ConcurrentCopyForwardSchemeTask::COPY_FORWARD_ROOTS, env->_cycleState);
+	_dispatcher->run(env, &copyForwardTask);
+
+	return false;
+}
+
+bool
+MM_CopyForwardScheme::copyForwardScan(MM_EnvironmentVLHGC *env)
+{
+	Assert_MM_true(concurrent_phase_scan == _concurrentPhase);
+	// TODO: We must make sure we have Exclusive VM access.
+	// 	 copyForwardScan will be the only one that will be running concurrently with mutator threads in the future
+	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
+
+	MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, MM_ConcurrentCopyForwardSchemeTask::COPY_FORWARD_SCAN, env->_cycleState);
+	_dispatcher->run(env, &copyForwardTask);
+
+	return true;
+}
+
+bool
+MM_CopyForwardScheme::copyForwardComplete(MM_EnvironmentVLHGC *env)
+{
+	Assert_MM_true(concurrent_phase_complete == _concurrentPhase);
+	// TODO: Overkill but we must make sure we have Exclusive VM access
+	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
+
+	MM_ConcurrentCopyForwardSchemeTask copyForwardTask(env, _dispatcher, this, MM_ConcurrentCopyForwardSchemeTask::COPY_FORWARD_COMPLETE, env->_cycleState);
+	_dispatcher->run(env, &copyForwardTask);
+
+	return false;
+}
+
+bool
+MM_CopyForwardScheme::copyForwardIncremental(MM_EnvironmentVLHGC *env)
+{
+	printf("\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::copyForwardIncremental!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
+	Assert_MM_mustHaveExclusiveVMAccess(env->getOmrVMThread());
+	bool result = false;
+	bool timeout = false;
+
+	while (!timeout) {
+
+		switch (_concurrentPhase) {
+		case concurrent_phase_idle: // Part of 1st PGC increment
+		{
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_idle, changing state from concurrent_phase_idle to concurrent_phase_init\n", (uintptr_t)pthread_self());
+			fflush(stdout);
+			_concurrentPhase = concurrent_phase_init;
+			continue;
+		}
+		case concurrent_phase_init: // Part of 1st PGC increment
+		{
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_init, about to call copyForwardInit()\n", (uintptr_t)pthread_self());
+			fflush(stdout);
+			/* initialize the mark map */
+			copyForwardInit(env);
+
+			_concurrentPhase = concurrent_phase_roots;
+		}
+			break;
+
+		case concurrent_phase_roots: // Part of 1st PGC increment
+		{
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_roots, about to call copyForwardRoots()\n", (uintptr_t)pthread_self());
+			fflush(stdout);
+			/* initialize all the roots */
+			copyForwardRoots(env);
+
+			/* prepare for the second pass (direct refs) */
+			//_extensions->rememberedSet.startProcessingSublist();
+
+			_concurrentPhase = concurrent_phase_scan;
+
+			printf("\t\t\t### TID: %zu. Inside case concurrent_phase_roots just switched current phase to concurrent_phase_scan!!!!!!!\n", (uintptr_t)pthread_self());
+			fflush(stdout);
+			timeout = true;
+		}
+			break;
+
+		case concurrent_phase_scan: // Part of 2nd PGC increment
+		{
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_scan, about to call copyForwardScan()...\n", (uintptr_t)pthread_self());
+			fflush(stdout);
+			// copyForwardScan returns true
+			timeout = copyForwardScan(env);
+
+			_concurrentPhase = concurrent_phase_complete;
+
+			//mergeIncrementGCStats(env, false);
+			//clearIncrementGCStats(env, false);
+			continue;
+		}
+
+		case concurrent_phase_complete: // Part of 3rd PGC increment
+		{
+			printf("\t\t\t### TID: %zu.. Inside case concurrent_phase_complete about to call copyForwardComplete()...\n", (uintptr_t)pthread_self());
+			fflush(stdout);
+			copyForwardComplete(env);
+
+			result = true;
+			_concurrentPhase = concurrent_phase_idle;
+			timeout = true;
+		}
+			break;
+
+		default:
+			Assert_MM_unreachable();
+		}
+	}
+
+	return result;
+}
+
+void
+MM_CopyForwardScheme::workThreadProcessRoots(MM_EnvironmentVLHGC *env)
+{
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadProcessRoots!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
+	/* GC init (set up per-invocation values) */
+	// TODO: workerSetupForCopyForward() is similar to what scavengeInit does for mutator threads. Should we move this to copyForwardInit??
+	workerSetupForCopyForward(env);
+
+	env->_workStack.prepareForWork(env, env->_cycleState->_workPackets);
+
+	/* pre-populate the _reservedRegionList with the flushed regions from every context (required to bootstrap tail-filling) */
+	/* this is a simple operation, so do it in one GC thread */
+	if (J9MODRON_HANDLE_NEXT_WORK_UNIT(env)) {
+		GC_HeapRegionIteratorVLHGC regionIterator(_regionManager, MM_HeapRegionDescriptor::MANAGED);
+		MM_HeapRegionDescriptorVLHGC *region = NULL;
+		while (NULL != (region = regionIterator.nextRegion())) {
+			if (region->containsObjects()) {
+				UDATA compactGroup = MM_CompactGroupManager::getCompactGroupNumber(env, region);
+				if (region->_markData._shouldMark) {
+					_reservedRegionList[compactGroup]._evacuateRegionCount += 1;
+				} else {
+					Assert_MM_true(MM_HeapRegionDescriptor::BUMP_ALLOCATED_MARKED == region->getRegionType());
+					MM_MemoryPoolBumpPointer *pool = (MM_MemoryPoolBumpPointer *)region->getMemoryPool();
+					/* only add regions with pools which could possibly satisfy a TLH allocation */
+					UDATA initialAllocatableBytes = pool->getAllocatableBytes();
+					UDATA minimumEntrySize = pool->getMinimumFreeEntrySize();
+					if (initialAllocatableBytes >= (minimumEntrySize + CARD_SIZE - 1)) {
+						Assert_MM_true(pool->getActualFreeMemorySize() >= initialAllocatableBytes);
+						Assert_MM_true(pool->getActualFreeMemorySize() < region->getSize());
+						Assert_MM_false(region->isSurvivorRegion());
+						Assert_MM_true(NULL == region->_copyForwardData._survivorBase);
+						insertTailCandidate(env, &_reservedRegionList[compactGroup], region);
+					}
+				}
+			}
+		}
+		
+		/* initialize the maximum number of sublists for each compact group; ensure that we try to produce fewer survivor regions than evacuate regions */
+		for(UDATA index = 0; index < _compactGroupMaxCount; index++) {
+			UDATA evacuateCount = _reservedRegionList[index]._evacuateRegionCount;
+			/* Arbitrarily set the max to half the evacuate count. This means that, if it's possible, we'll use no more than half as many survivor regions as there were evacuate regions */
+			UDATA maxSublistCount = evacuateCount / 2;
+			maxSublistCount = OMR_MAX(maxSublistCount, 1);
+			maxSublistCount = OMR_MIN(maxSublistCount, MM_ReservedRegionListHeader::MAX_SUBLISTS);
+			_reservedRegionList[index]._maxSublistCount = maxSublistCount;
+		}
+	}
+
+	/* another thread clears the class loader remembered set */
+	if (_extensions->tarokEnableIncrementalClassGC) {
+		if (J9MODRON_HANDLE_NEXT_WORK_UNIT(env)) {
+			MM_ClassLoaderRememberedSet *classLoaderRememberedSet = _extensions->classLoaderRememberedSet;
+			classLoaderRememberedSet->resetRegionsToClear(env);
+			MM_HeapRegionDescriptorVLHGC *region = NULL;
+			GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
+			while(NULL != (region = regionIterator.nextRegion())) {
+				if (region->_markData._shouldMark) {
+					classLoaderRememberedSet->prepareToClearRememberedSetForRegion(env, region);
+				}
+			}
+			classLoaderRememberedSet->clearRememberedSets(env);
+		}
+	}
+
+
+	/* We want to clear all out-going references from the nursery set since those regions
+	 * will be walked and their precise out-going references will be used to reconstruct the RS
+	 */
+	_interRegionRememberedSet->clearFromRegionReferencesForCopyForward(env);
+
+	clearMarkMapForPartialCollect(env);
+
+	if (NULL != env->_cycleState->_externalCycleState) {
+		rememberReferenceListsFromExternalCycle(env);
+	}
+	((MM_CopyForwardSchemeTask*)env->_currentTask)->synchronizeGCThreadsForInterRegionRememberedSet(env, UNIQUE_ID);
+
+	/*  Enable dynamicBreadthFirstScanOrdering depth copying if dynamicBreadthFirstScanOrdering is enabled */
+	env->enableHotFieldDepthCopy();
+	
+	/* scan roots before cleaning the card table since the roots give us more concrete NUMA recommendations */
+	scanRoots(env);
+
+	cleanCardTable(env);
+}
+
+void
+MM_CopyForwardScheme::workThreadScan(MM_EnvironmentVLHGC *env)
+{
+	// TODO: Added to initialize work packets
+	//env->_workStack.prepareForWork(env, env->_cycleState->_workPackets);
+
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
+	/* Clear GC stats */
+
+	completeScan(env);
+
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadScan just RETURNED from completeScan!!!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
+}
+
+void
+MM_CopyForwardScheme::workThreadComplete(MM_EnvironmentVLHGC *env)
+{
+	printf("\t\t\t\t### TID: %zu.. Inside MM_CopyForwardScheme::workThreadComplete!!!!!\n", (uintptr_t)pthread_self());
+	fflush(stdout);
+
+	/* TODO: check if abort happened during root scanning/cardTable clearing (and optimize in any other way) */
+	if(abortFlagRaised()) {
+		Assert_MM_true(_abortInProgress);
+		/* rescan to fix up root slots, but also to complete scanning of roots that we miss to mark/push in original root scanning */
+		scanRoots(env);
+
+		cleanCardTable(env);
+
+		completeScan(env);
+	}
+	/*  Disable dynamicBreadthFirstScanOrdering depth copying after root scanning and main phase of PGC cycle */
+	env->disableHotFieldDepthCopy();
+
+	/* ensure that all buffers have been flushed before we start reference processing */
+	env->getGCEnvironment()->_referenceObjectBuffer->flush(env);
+
+	if(env->_currentTask->synchronizeGCThreadsAndReleaseSingleThread(env, UNIQUE_ID)) {
+		_clearableProcessingStarted = true;
+		/* Soft and weak references resurrected by finalization need to be cleared immediately since weak and soft processing has already completed.
+		 * This has to be set before unfinalizable (and phantom) processing, because it can copy object to a tail filled region, in which case we do
+		 * not want to put GMP refs to REMEMBERED state (we want have a chance to put it back to INITIAL state).
+		 */
+		env->_cycleState->_referenceObjectOptions |= MM_CycleState::references_clear_soft;
+		env->_cycleState->_referenceObjectOptions |= MM_CycleState::references_clear_weak;
+		/* since we need a sync point here anyway, use this opportunity to determine which regions contain weak and soft references or unfinalized objects */
+		/* (we can't do phantom references yet because unfinalized processing may find more of them) */
+		MM_HeapRegionDescriptorVLHGC *region = NULL;
+		GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
+		while(NULL != (region = regionIterator.nextRegion())) {
+			if (region->isSurvivorRegion() || region->_copyForwardData._evacuateSet) {
+				region->getReferenceObjectList()->startSoftReferenceProcessing();
+				region->getReferenceObjectList()->startWeakReferenceProcessing();
+			}
+		}
+		env->_currentTask->releaseSynchronizedGCThreads(env);
+	}
+
+	MM_CopyForwardSchemeRootClearer rootClearer(env, this);
+	rootClearer.setStringTableAsRoot(!isCollectStringConstantsEnabled());
+	rootClearer.scanClearable(env);
+
+	/* Clearable must not uncover any new work */
+	Assert_MM_true(NULL == env->_workStack.popNoWait(env));
+
+	env->_currentTask->synchronizeGCThreads(env, UNIQUE_ID);
+
+	if(!abortFlagRaised()) {
+		clearCardTableForPartialCollect(env);
+	}
+
+	/* make sure that we aren't leaving any stale scan work behind */
+	Assert_MM_false(isAnyScanCacheWorkAvailable());
+
+	if(NULL != env->_cycleState->_externalCycleState) {
+		updateOrDeleteObjectsFromExternalCycle(env);
+	}
+
+	env->_workStack.flush(env);
+	/* flush the buffer after clearable phase --- cmvc 198798 */
+	/* flush ownable synchronizer object buffer after rebuild the ownableSynchronizerObjectList during main scan phase */
+	env->getGCEnvironment()->_ownableSynchronizerObjectBuffer->flush(env);
+
+	/* No matter what happens, always sum up the gc stats */
+	mergeGCStats(env);
+
+	env->_copyForwardCompactGroups = NULL;
+
+	return;
+}
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */

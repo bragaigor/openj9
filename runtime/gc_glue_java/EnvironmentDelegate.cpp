@@ -223,7 +223,13 @@ MM_EnvironmentDelegate::relinquishExclusiveVMAccess()
 void
 MM_EnvironmentDelegate::assumeExclusiveVMAccess(uintptr_t exclusiveCount)
 {
+	// TODO: Very UGLY hack to make third concurrent PGC phase work
+	if ((1 == exclusiveCount) && (exclusiveCount == _vmThread->omrVMThread->exclusiveCount)) {
+		return;
+	}
 	Assert_MM_true(exclusiveCount >= 1);
+	printf("\t### TID: %zu. Inside assumeExclusiveVMAccess!! _vmThread->publicFlags: %zu, J9_PUBLIC_FLAGS_VM_ACCESS: %zu, _vmThread->omrVMThread->exclusiveCount: %zu!\n", (uintptr_t)pthread_self(), (uintptr_t)_vmThread->publicFlags, (uintptr_t)J9_PUBLIC_FLAGS_VM_ACCESS, (uintptr_t)_vmThread->omrVMThread->exclusiveCount);
+	fflush(stdout);
 	Assert_MM_true(0 == (_vmThread->publicFlags & J9_PUBLIC_FLAGS_VM_ACCESS));
 	Assert_MM_true(0 == _vmThread->omrVMThread->exclusiveCount);
 

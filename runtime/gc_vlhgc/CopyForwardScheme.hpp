@@ -38,6 +38,9 @@
 #include "EnvironmentVLHGC.hpp"
 #include "GCExtensions.hpp"
 #include "ModronTypes.hpp"
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+#include "MainGCThread.hpp"
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 
 class GC_SlotObject;
 class MM_AllocationContextTarok;
@@ -157,6 +160,20 @@ private:
 	volatile bool _failedToExpand; /**< Record if we've failed to expand in this collection already, in order to avoid repeated expansion attempts */
 	bool _shouldScanFinalizableObjects; /**< Set to true at the beginning of a collection if there are any pending finalizable objects */
 	const UDATA _objectAlignmentInBytes;	/**< Run-time objects alignment in bytes */
+
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	MM_MainGCThread _mainGCThread; /**< An object which manages the state of the main GC thread */
+
+	volatile enum ConcurrentState {
+		concurrent_phase_idle,
+		concurrent_phase_init,
+		concurrent_phase_roots,
+		concurrent_phase_scan,
+		concurrent_phase_complete
+	} _concurrentPhase;
+
+	bool _currentPhaseConcurrent;
+#endif /* OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD */
 
 protected:
 public:
@@ -1109,14 +1126,32 @@ public:
 	 */
 	void concurrentCopyForwardCollectionSet(MM_EnvironmentVLHGC *env);
 
+	/* main thread specific methods */
+	bool copyForwardIncremental(MM_EnvironmentVLHGC *env);
+	bool copyForwardInit(MM_EnvironmentVLHGC *env);
+	bool copyForwardRoots(MM_EnvironmentVLHGC *env);
+	bool copyForwardScan(MM_EnvironmentVLHGC *env);
+	bool copyForwardComplete(MM_EnvironmentVLHGC *env);
+
+	/* worker thread */
+	void workThreadProcessRoots(MM_EnvironmentVLHGC *env);
+	void workThreadScan(MM_EnvironmentVLHGC *env);
+	void workThreadComplete(MM_EnvironmentVLHGC *env);
+
 	/**
 	 * True if concurrent CopyForward cycle is active at any point (STW or concurrent
 	 * task active, or even short gaps between STW and concurrent tasks). Equivalent to
 	 * isConcurrentCycleInProgress() from Scavenger
 	 */
 	MMINLINE bool isConcurrentCycleInProgress() {
-		/* Unimplemented */
-		return false;
+		return concurrent_phase_idle != _concurrentPhase;
+	}
+
+	/**
+	 *
+	 */
+	MMINLINE bool isConcurrentCopyForwardPhase() {
+		return concurrent_phase_scan == _concurrentPhase;
 	}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 

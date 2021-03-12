@@ -76,6 +76,15 @@ MM_CopyForwardDelegate::performCopyForwardForPartialGC(MM_EnvironmentVLHGC *env,
 	}
 }
 
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+void
+MM_CopyForwardDelegate::performCopyForwardForConcurrentPartialGC(MM_EnvironmentVLHGC *env)
+{
+	_breadthFirstCopyForwardScheme->copyForwardIncremental(env);
+	//_breadthFirstCopyForwardScheme->concurrentCopyForwardCollectionSet(env);
+}
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
 void
 MM_CopyForwardDelegate::preCopyForwardSetup(MM_EnvironmentVLHGC *env)
 {

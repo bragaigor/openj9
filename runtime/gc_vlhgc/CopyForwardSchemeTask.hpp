@@ -1,6 +1,6 @@
 
 /*******************************************************************************
- * Copyright (c) 1991, 2020 IBM Corp. and others
+ * Copyright (c) 1991, 2021 IBM Corp. and others
  *
  * This program and the accompanying materials are made available under
  * the terms of the Eclipse Public License 2.0 which accompanies this
@@ -39,9 +39,17 @@ class MM_CycleState;
 
 class MM_CopyForwardSchemeTask : public MM_ParallelTask
 {
+	/* Data Members */
 private:
-	MM_CopyForwardScheme *_copyForwardScheme;  /**< Tasks controlling scheme instance */
 	MM_CycleState *_cycleState;  /**< Collection cycle state active for the task */
+
+protected:
+	MM_CopyForwardScheme *_copyForwardScheme;  /**< Tasks controlling scheme instance */
+
+public:
+	/* Member Functions */
+private:
+protected:
 
 public:
 	virtual UDATA getVMStateID() { return OMRVMSTATE_GC_SCAVENGE; };
@@ -106,8 +114,8 @@ public:
 	 */
 	MM_CopyForwardSchemeTask(MM_EnvironmentVLHGC *env, MM_ParallelDispatcher *dispatcher, MM_CopyForwardScheme *copyForwardScheme, MM_CycleState *cycleState) :
 		MM_ParallelTask((MM_EnvironmentBase *)env, dispatcher)
-		, _copyForwardScheme(copyForwardScheme)
 		, _cycleState(cycleState)
+		, _copyForwardScheme(copyForwardScheme)
 	{
 		_typeId = __FUNCTION__;
 	}

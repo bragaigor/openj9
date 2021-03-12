@@ -127,6 +127,12 @@ public:
 	}
 
 #if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	/**
+	 * TODO: Document
+	 *
+	 */
+	void performCopyForwardForConcurrentPartialGC(MM_EnvironmentVLHGC *env);
+
 	MMINLINE bool isConcurrentCycleInProgress()
 	{
 		return _breadthFirstCopyForwardScheme->isConcurrentCycleInProgress();

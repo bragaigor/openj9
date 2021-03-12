@@ -898,6 +898,10 @@ MM_IncrementalGenerationalGC::partialGarbageCollectPreWork(MM_EnvironmentVLHGC *
 {
 	Assert_MM_true(NULL != env->_cycleState->_activeSubSpace);
 
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	_mainGCThread.setWorkSTWDone(false);
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
 	/*
 	 * Collection preparation work including cache flushing and stats reporting.
 	 */
@@ -1969,25 +1973,48 @@ MM_IncrementalGenerationalGC::reportCopyForwardEnd(MM_EnvironmentVLHGC *env, U_6
 bool
 MM_IncrementalGenerationalGC::isConcurrentWorkAvailable(MM_EnvironmentBase *env)
 {
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	bool isConcurrentCopyForwardEnabled = _extensions->isConcurrentCopyForwardEnabled();
+	bool isConcurrentCopyForwardRunning = _copyForwardDelegate.isConcurrentCycleInProgress();
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
 	bool isConcurrentEnabled = _extensions->tarokEnableConcurrentGMP;
 	bool isGMPRunning = isGlobalMarkPhaseRunning();
 	bool isProcessingWorkPackets = MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState;
 	bool isStillPermittedToRun = !_forceConcurrentTermination;
 	bool isGMPWorkAvailable = _globalMarkPhaseIncrementBytesStillToScan > 0;
-	
-	return isConcurrentEnabled && isGMPRunning && isProcessingWorkPackets && isStillPermittedToRun && isGMPWorkAvailable;
+
+	bool concurrentWorkAvailable = isConcurrentEnabled && isGMPRunning && isProcessingWorkPackets && isStillPermittedToRun && isGMPWorkAvailable;
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	concurrentWorkAvailable  = concurrentWorkAvailable || (isConcurrentCopyForwardEnabled && isConcurrentCopyForwardRunning);
+	printf("\t### TID: %zu. Inside isConcurrentWorkAvailable() and concurrentWorkAvailable: %d ....\n", (uintptr_t)pthread_self(), (int)concurrentWorkAvailable);
+	fflush(stdout);
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
+	return concurrentWorkAvailable;
 }
 
 void
 MM_IncrementalGenerationalGC::preConcurrentInitializeStatsAndReport(MM_EnvironmentBase *env, MM_ConcurrentPhaseStatsBase *stats)
 {
 	Assert_MM_true(isConcurrentWorkAvailable(env));
-	Assert_MM_true(NULL == env->_cycleState);
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
-	stats->_cycleID = _persistentGlobalMarkPhaseState._verboseContextID;
-	stats->_scanTargetInBytes = _globalMarkPhaseIncrementBytesStillToScan;
-	env->_cycleState = &_persistentGlobalMarkPhaseState;
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCycleInProgress()) {
+		// TODO: No need to update any state in case of concurrent copy forward????
+		printf("\t### TID: %zu. Inside preConcurrentInitializeStatsAndReport and no need to update anything???????\n", (uintptr_t)pthread_self());
+		fflush(stdout);
+		/* noop? */
+	} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		Assert_MM_true(NULL == env->_cycleState);
+
+		stats->_cycleID = _persistentGlobalMarkPhaseState._verboseContextID;
+		stats->_scanTargetInBytes = _globalMarkPhaseIncrementBytesStillToScan;
+		env->_cycleState = &_persistentGlobalMarkPhaseState;
+	}
+
 	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats._markStats._startTime = j9time_hires_clock();
 	TRIGGER_J9HOOK_MM_PRIVATE_CONCURRENT_PHASE_START(
 			_extensions->privateHookInterface,
@@ -2001,29 +2028,38 @@ uintptr_t
 MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *envBase)
 {
 	MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(envBase);
+	UDATA bytesConcurrentlyScanned = 0;
 
-	/* note that we can't check isConcurrentWorkAvailable at this point since another thread could have set _forceConcurrentTermination since the
-	 * main thread calls this outside of the control monitor
-	 */
-	Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
-	Assert_MM_true(isGlobalMarkPhaseRunning());
-	Assert_MM_true(MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState);
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCycleInProgress()) {
+		// TODO: Create the equivalent of _persistentGlobalMarkPhaseState for concurrent copy forward. Say: _persistentCopyForwardPhaseState
+		_copyForwardDelegate.performCopyForwardForConcurrentPartialGC(env);
+	} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		/* note that we can't check isConcurrentWorkAvailable at this point since another thread could have set _forceConcurrentTermination since the
+		 * main thread calls this outside of the control monitor
+		 */
+		Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
+		Assert_MM_true(isGlobalMarkPhaseRunning());
+		Assert_MM_true(MM_CycleState::state_process_work_packets_after_initial_mark == _persistentGlobalMarkPhaseState._markDelegateState);
 
-	static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.clear();
+		static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats.clear();
 	
-	/* We pass a pointer to _forceConcurrentTermination so that we can cause the concurrent to terminate early by setting the
-	 * flag to true if we want to interrupt it so that the main thread returns to the control mutex in order to receive a
-	 * new GC request.
-	 */
-	UDATA bytesConcurrentlyScanned = _globalMarkDelegate.performMarkConcurrent(env, _globalMarkPhaseIncrementBytesStillToScan, &_forceConcurrentTermination);
-	_globalMarkPhaseIncrementBytesStillToScan = MM_Math::saturatingSubtract(_globalMarkPhaseIncrementBytesStillToScan, bytesConcurrentlyScanned);
+		/* We pass a pointer to _forceConcurrentTermination so that we can cause the concurrent to terminate early by setting the
+		 * flag to true if we want to interrupt it so that the main thread returns to the control mutex in order to receive a
+		 * new GC request.
+		 */
+		bytesConcurrentlyScanned = _globalMarkDelegate.performMarkConcurrent(env, _globalMarkPhaseIncrementBytesStillToScan, &_forceConcurrentTermination);
+		_globalMarkPhaseIncrementBytesStillToScan = MM_Math::saturatingSubtract(_globalMarkPhaseIncrementBytesStillToScan, bytesConcurrentlyScanned);
 	
-	/* Accumulate the mark increment stats into persistent GMP state*/
-	_persistentGlobalMarkPhaseState._vlhgcCycleStats.merge(&static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats);
+		/* Accumulate the mark increment stats into persistent GMP state*/
+		_persistentGlobalMarkPhaseState._vlhgcCycleStats.merge(&static_cast<MM_CycleStateVLHGC*>(env->_cycleState)->_vlhgcIncrementStats);
 
-	/* Release any resources that might be bound to this main thread,
-	 * since it may be implicit and more importantly change for other phases of the cycle */
-	_interRegionRememberedSet->releaseCardBufferControlBlockListForThread(env, env);
+		/* Release any resources that might be bound to this main thread,
+		 * since it may be implicit and more importantly change for other phases of the cycle */
+		_interRegionRememberedSet->releaseCardBufferControlBlockListForThread(env, env);
+	}
 	
 	/* return the number of bytes scanned since the caller needs to pass it into postConcurrentUpdateStatsAndReport for stats reporting */
 	return bytesConcurrentlyScanned;
@@ -2032,8 +2068,15 @@ MM_IncrementalGenerationalGC::mainThreadConcurrentCollect(MM_EnvironmentBase *en
 void
 MM_IncrementalGenerationalGC::postConcurrentUpdateStatsAndReport(MM_EnvironmentBase *env, MM_ConcurrentPhaseStatsBase *stats, UDATA bytesConcurrentlyScanned)
 {
-	Assert_MM_false(isConcurrentWorkAvailable(env));
-	Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
+#if defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD)
+	if (_extensions->isConcurrentCopyForwardEnabled() && _copyForwardDelegate.isConcurrentCycleInProgress()) {
+		// TODO: Create asserts for concurrent copy forward
+	} else
+#endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+	{
+		Assert_MM_false(isConcurrentWorkAvailable(env));
+		Assert_MM_true(env->_cycleState == &_persistentGlobalMarkPhaseState);
+	}
 	PORT_ACCESS_FROM_ENVIRONMENT(env);
 
 	stats->_bytesScanned = bytesConcurrentlyScanned;
