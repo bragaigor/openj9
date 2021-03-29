@@ -174,6 +174,19 @@ public:
 		}
 	}
 
+	MMINLINE void
+	setEnableSparseHeap(bool enableSparseHeap)
+	{
+		//_enableSparseHeap = enableSparseHeap;
+	}
+
+	MMINLINE bool
+	isSparseHeapEnabled()
+	{
+		//return _enableSparseHeap;
+		return false;
+	}
+
 	/**
 	 * Determines whether or not a spine that represents an object of this
 	 * class should have its data section aligned.
