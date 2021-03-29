@@ -1864,11 +1864,10 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 		UDATA hotFieldPadSize = 0;
 		MM_CopyScanCacheVLHGC *copyCache = NULL;
 		void *newCacheAlloc = NULL;
-		bool doesObjectNeedHash = false;
 		GC_ObjectModel *objectModel = &_extensions->objectModel;
 		
 		/* Object is in the evacuate space but not forwarded. */
-		_extensions->objectModel.calculateObjectDetailsForCopy(env, forwardedHeader, &objectCopySizeInBytes, &objectReserveSizeInBytes, &doesObjectNeedHash);
+		_extensions->objectModel.calculateObjectDetailsForCopy(env, forwardedHeader, &objectCopySizeInBytes, &objectReserveSizeInBytes);
 
 		Assert_MM_objectAligned(env, objectReserveSizeInBytes);
 
@@ -1944,26 +1943,7 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 
 				forwardedHeader->fixupForwardedObject(destinationObjectPtr);
 
-				if (objectModel->isIndexable(destinationObjectPtr)) {
-					_extensions->indexableObjectModel.fixupInternalLeafPointersAfterCopy((J9IndexableObject *)destinationObjectPtr, (J9IndexableObject *)forwardedHeader->getObject());
-
-					/* Updates internal data address of indexable objects. Every indexable object have a void *dataAddr
-					 * that always points to the array data. It will always point to the address right after the header,
-					 * in case of contiguous data it will point to the data itself, and in case of discontiguous
-					 * arraylet it will point to the first arrayiod. dataAddr is only updated if dataAddr points to data
-					 * within heap. */
-					_extensions->indexableObjectModel.fixupDataAddr(destinationObjectPtr);
-				}
-
-				/* IF the object has been hashed and has not been moved then we must store the previous
-				 * address into the hashcode slot at hashcode offset.
-				 */
-				if (doesObjectNeedHash) {
-					UDATA hashOffset = objectModel->getHashcodeOffset(destinationObjectPtr);
-					U_32 *hashCodePointer = (U_32*)((U_8*)destinationObjectPtr + hashOffset);
-					*hashCodePointer = objectModel->computeObjectHash(forwardedHeader);
-					objectModel->setObjectHasBeenMoved(destinationObjectPtr);
-				}
+				_extensions->objectModel.fixupForwardedObject(forwardedHeader, destinationObjectPtr, _extensions->objectModel.getPreservedAge(forwardedHeader));
 
 				/* Update any mark maps and transfer card table data as appropriate for a successful copy */
 				updateMarkMapAndCardTableOnCopy(env, forwardedHeader->getObject(), destinationObjectPtr, copyCache);
