@@ -5242,6 +5242,7 @@ typedef struct J9JavaVM {
 	UDATA thrTryEnterNestedSpinning;
 	UDATA thrDeflationPolicy;
 	UDATA gcOptions;
+	BOOLEAN isArrayHeaderDataAddressEnabled;
 	UDATA  ( *unhookVMEvent)(struct J9JavaVM *javaVM, UDATA eventNumber, void * currentHandler, void * oldHandler) ;
 	UDATA classLoadingMaxStack;
 	U_8* callInReturnPC;

@@ -45,9 +45,7 @@
 #include "HeapRegionDescriptor.hpp"
 #include "HeapRegionIterator.hpp"
 #include "HeapRegionManager.hpp"
-#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 #include "HeapRegionIteratorVLHGC.hpp"
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 #include "MemoryPool.hpp"
 #include "MemorySubSpace.hpp"
 #include "MemorySpace.hpp"
@@ -229,6 +227,12 @@ MM_RootScanner::doDoubleMappedObjectSlot(J9Object *objectPtr, struct J9PortVmemI
 	/* No need to call doSlot() here since there's nothing to update */
 }
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
+
+void
+MM_RootScanner::doSparseHeapObject(J9Object *objectPtr)
+{
+	/* No need to call doSlot() here since there's nothing to update */
+}
 
 /**
  * @Perform operation on the given string cache table slot.
@@ -881,6 +885,23 @@ MM_RootScanner::scanDoubleMappedObjects(MM_EnvironmentBase *env)
 	}
 }
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
+
+void
+MM_RootScanner::scanSparseHeapObjects(MM_EnvironmentBase *env)
+{
+	if (_singleThread || J9MODRON_HANDLE_NEXT_WORK_UNIT(env)) {
+		GC_HeapRegionIteratorVLHGC regionIterator(_extensions->heap->getHeapRegionManager());
+		MM_HeapRegionDescriptorVLHGC *region = NULL;
+		reportScanningStarted(RootScannerEntity_DoubleMappedObjects);
+		while (NULL != (region = regionIterator.nextRegion())) {
+			if (region->isArrayletLeaf()) {
+				J9Object *spineObject = (J9Object *)region->_allocateData.getSpine();
+				Assert_MM_true(NULL != spineObject);
+				doSparseHeapObject(spineObject);
+			}
+		}
+	}
+}
 
 /**
  * Scan all root set references from the VM into the heap.

@@ -90,6 +90,7 @@
 #include "RegionBasedOverflowVLHGC.hpp"
 #include "RootScanner.hpp"
 #include "SlotObject.hpp"
+#include "SparseVirtualMemory.hpp"
 #include "StackSlotValidator.hpp"
 #include "SublistFragment.hpp"
 #include "SublistIterator.hpp"
@@ -415,14 +416,14 @@ MM_CopyForwardScheme::updateLeafRegions(MM_EnvironmentVLHGC *env)
 				Assert_MM_true(updatedSpineRegion->containsObjects());
 
 				/* we need to move the leaf to another region's leaf list since its spine has moved */
-				region->_allocateData.removeFromArrayletLeafList();
+				region->_allocateData.removeFromArrayletLeafList(env);
 				region->_allocateData.addToArrayletLeafList(updatedSpineRegion);
 				region->_allocateData.setSpine((J9IndexableObject *)updatedSpineObject);
 			} else if (!isLiveObject(spineObject)) {
 				Assert_MM_true(isObjectInEvacuateMemory(spineObject));
 				/* the spine is in evacuate space so the arraylet is dead => recycle the leaf */
 				/* remove arraylet leaf from list */
-				region->_allocateData.removeFromArrayletLeafList();
+				region->_allocateData.removeFromArrayletLeafList(env);
 				/* recycle */
 				region->_allocateData.setSpine(NULL);
 				region->getSubSpace()->recycleRegion(env, region);
@@ -1988,16 +1989,25 @@ MM_CopyForwardScheme::copy(MM_EnvironmentVLHGC *env, MM_AllocationContextTarok *
 				memcpy((void *)destinationObjectPtr, forwardedHeader->getObject(), objectCopySizeInBytes);
 
 				forwardedHeader->fixupForwardedObject(destinationObjectPtr);
+				GC_ArrayObjectModel *indexableObjectModel = &_extensions->indexableObjectModel;
 
 				if (objectModel->isIndexable(destinationObjectPtr)) {
-					_extensions->indexableObjectModel.fixupInternalLeafPointersAfterCopy((J9IndexableObject *)destinationObjectPtr, (J9IndexableObject *)forwardedHeader->getObject());
+					indexableObjectModel->fixupInternalLeafPointersAfterCopy((J9IndexableObject *)destinationObjectPtr, (J9IndexableObject *)forwardedHeader->getObject());
 
-					/* Updates internal data address of indexable objects. Every indexable object have a void *dataAddr
-					 * that always points to the array data. It will always point to the address right after the header,
-					 * in case of contiguous data it will point to the data itself, and in case of discontiguous
-					 * arraylet it will point to the first arrayiod. dataAddr is only updated if dataAddr points to data
-					 * within heap. */
-					_extensions->indexableObjectModel.fixupDataAddr(destinationObjectPtr);
+					/* If double mapping is enabled and the indexable object has been double mapped, there's no need to update the data pointer;
+					 * however, if either one of these statements is false than we must update it, because data pointer points to data within heap. */
+					bool shouldUpdateDataAddress = !indexableObjectModel->isSparseHeapEnabled();
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+					shouldUpdateDataAddress = shouldUpdateDataAddress && !indexableObjectModel->isDoubleMappingEnabled();
+#endif
+					if (shouldUpdateDataAddress || !indexableObjectModel->isIndexableObjectDoubleMapped(_extensions, (J9IndexableObject *)destinationObjectPtr)) {
+						/* Updates internal data address of indexable objects. Every indexable object have a void *dataAddr
+						 * that always points to the array data. It will always point to the address right after the header,
+						 * in case of contiguous data it will point to the data itself, and in case of discontiguous
+						 * arraylet it will point to the first arrayiod. dataAddr is only updated if dataAddr points to data
+						 * within heap. */
+						indexableObjectModel->fixupDataAddr(destinationObjectPtr);
+					}
 				}
 
 				/* IF the object has been hashed and has not been moved then we must store the previous
@@ -3923,15 +3933,55 @@ private:
 			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
 			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
 			objectPtr = forwardedHeader.getForwardedObject();
-			if (NULL == objectPtr) {
+
+			void *forwardedObject = forwardedHeader.getForwardedObject();
+			void *realObjPtr = NULL == forwardedObject ? objectPtr : forwardedObject;
+			void *dataAddr = _extensions->indexableObjectModel.getDataAddrForIndexableObject((J9IndexableObject *)realObjPtr);
+			bool sparseHeapEnabled = _extensions->indexableObjectModel.isSparseHeapEnabled();
+			if (NULL == forwardedObject) {
 				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				env->_copyForwardStats._doubleMappedArrayletsCleared += 1;
 				OMRPORT_ACCESS_FROM_OMRVM(_omrVM);
-				omrvmem_release_double_mapped_region(identifier->address, identifier->size, identifier);
+				if (sparseHeapEnabled) {
+					_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(dataAddr);
+				} else {
+					omrvmem_release_double_mapped_region(identifier->address, identifier->size, identifier);
+				}
+			} else if (sparseHeapEnabled) {
+				/* There might be the case that GC finds a floating arraylet, which was a result of an allocation
+				 * failure (reason why this GC cycle is happening).
+				 * TODO: Should this be handled here or by sparse Heap? */
+				if (!_extensions->indexableObjectModel.isAddressWithinHeap(_extensions, dataAddr)) {
+					_extensions->sparseVM->updateCopiedObject(dataAddr, forwardedObject);
+				}
 			}
 		}
 	}
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
+
+	virtual void doSparseHeapObject(J9Object *objectPtr) {
+		//MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(_env);
+		if (!_copyForwardScheme->isLiveObject(objectPtr)) {
+			Assert_MM_true(_copyForwardScheme->isObjectInEvacuateMemory(objectPtr));
+			MM_ForwardedHeader forwardedHeader(objectPtr, _extensions->compressObjectReferences());
+			MM_SparseVirtualMemory *sparseVM = _extensions->sparseVM;
+			void *forwardedObject = forwardedHeader.getForwardedObject();
+			// TODO: Better way to fetch dataAddr?
+			void *realObjPtr = NULL == forwardedObject ? objectPtr : forwardedObject;
+			void *dataAddr = _extensions->indexableObjectModel.getDataAddrForIndexableObject((J9IndexableObject *)realObjPtr);
+			if (NULL == forwardedObject) {
+				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
+				sparseVM->removeObjFromPoolAndFreeSparseRegion(dataAddr);
+			} else {
+				/* There might be the case that GC finds a floating arraylet, which was a result of an allocation
+				 * failure (reason why this GC cycle is happening).
+				 * TODO: Should this be handled here or by sparse Heap? */
+				if (!_extensions->indexableObjectModel.isAddressWithinHeap(_extensions, dataAddr)) {
+					sparseVM->updateCopiedObject(dataAddr, forwardedObject);
+				}
+			}
+		}
+	}
 
 	/**
 	 * @Clear the string table cache slot if the object is not marked

@@ -24,6 +24,10 @@
 #include "j9.h"
 #include "j9cfg.h"
 
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+#include <sys/mman.h>
+#include <errno.h>
+#endif
 #include "AllocationContext.hpp"
 #include "CycleState.hpp"
 #include "EnvironmentVLHGC.hpp"
@@ -180,7 +184,7 @@ MM_HeapRegionDataForAllocate::taskAsArrayletLeaf(MM_EnvironmentBase *env)
  * or assigned to a new list immediately.
  */
 void 
-MM_HeapRegionDataForAllocate::removeFromArrayletLeafList()
+MM_HeapRegionDataForAllocate::removeFromArrayletLeafList(MM_EnvironmentVLHGC *env)
 {
 	Assert_MM_true(_region->isArrayletLeaf());
 	
@@ -188,6 +192,46 @@ MM_HeapRegionDataForAllocate::removeFromArrayletLeafList()
 	MM_HeapRegionDescriptorVLHGC *previous = _previousArrayletLeafRegion;
 	
 	Assert_MM_true(NULL != previous);
+	/**
+	 * Restore/Recommit arraylet leaves that have been previously decommited
+	 */
+	MM_GCExtensions *extensions = MM_GCExtensions::getExtensions(env);
+
+	const UDATA arrayletLeafSize = env->getOmrVM()->_arrayletLeafSize;
+	void *leafAddress = _region->getLowAddress();
+	bool ret = MM_GCExtensions::getExtensions(env)->heap->commitMemory(leafAddress, arrayletLeafSize);
+	if (!ret) {
+		printf("ERROR: Falied to recommit in-heap region. leafAddress: %p, arrayletLeafSize: %zu\n", leafAddress, arrayletLeafSize);
+	}
+
+	if (!extensions->indexableObjectModel.isSparseHeapEnabled()) {
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+		if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
+			void *leafAddress = _region->getLowAddress();
+			const UDATA arrayletLeafSize = env->getOmrVM()->_arrayletLeafSize;
+			int fd = extensions->getHeap()->getHeapFileDescriptor();
+			int flags = MAP_SHARED | MAP_FIXED;
+			//Assert_MM_true(-1 != fd);
+			if (-1 == fd) {
+				flags = MAP_PRIVATE | MAP_FIXED | MAP_ANON;
+			}
+
+			void *modifiedLeaf = mmap(
+				leafAddress,
+				arrayletLeafSize,
+				PROT_READ | PROT_WRITE,
+				flags, // If it doesnt work pass MAP_ANON
+				fd, // Even though head is associated to file descriptor this should not matter
+				0);
+
+			if (modifiedLeaf == MAP_FAILED) {
+				printf("Failed to renable leaf region. leaf: %p, errno: %d, str: %s\n", leafAddress, errno, strerror(errno));
+			} else if (modifiedLeaf != leafAddress) {
+				printf("Failed to renable leaf region. Expected address: %p, actual: %p, errno: %d\n", leafAddress, modifiedLeaf, errno);
+			}
+		}
+#endif
+	}
 	
 	previous->_allocateData._nextArrayletLeafRegion = next;
 	if (NULL != next) {

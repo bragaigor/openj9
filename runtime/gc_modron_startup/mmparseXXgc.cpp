@@ -1031,6 +1031,16 @@ gcParseXXgcArguments(J9JavaVM *vm, char *optArg)
 			continue;
 		}
 
+		if (try_scan(&scan_start, "enableSparseHeap")) {
+			extensions->isSparseHeapRequested = true;
+			continue;
+		}
+
+		if (try_scan(&scan_start, "disableSparseHeap")) {
+			extensions->isSparseHeapRequested = false;
+			continue;
+		}
+
 		if (try_scan(&scan_start, "largeObjectAllocationProfilingThreshold=")) {
 			if (!scan_udata_helper(vm, &scan_start, &extensions->largeObjectAllocationProfilingThreshold, "largeObjectAllocationProfilingThreshold=")) {
 				returnValue = JNI_EINVAL;

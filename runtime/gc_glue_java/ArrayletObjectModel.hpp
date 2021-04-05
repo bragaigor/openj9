@@ -254,7 +254,6 @@ public:
 		return getSpineSizeWithoutHeader(layout, numberArraylets, dataSize, alignData);
 	}
 
-#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 	/**
 	 * Checks if arraylet falls into corner case of discontigous data
 	 * Arraylet possible cases:
@@ -305,7 +304,6 @@ public:
 	{
 		return (1 == numArraylets(spine)) && (getSizeInElements(spine) > 0);
 	}
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 	/**
 	 * We can't use memcpy because it may be not atomic for pointers, use this function instead
@@ -1278,6 +1276,11 @@ public:
 	 */
 	void fixupInternalLeafPointersAfterCopy(J9IndexableObject *destinationPtr, J9IndexableObject *sourcePtr);
 
+	bool isArrayletContiguous(J9IndexableObject *arrayPtr);
+	bool isArrayletContiguous(UDATA dataSizeInBytes);
+	bool isAddressWithinHeap(MM_GCExtensionsBase *extensions, void *address);
+	bool isIndexableObjectDoubleMapped(MM_GCExtensionsBase *extensions, J9IndexableObject *arrayPtr);
+
 	/**
 	 * Initialize the receiver, a new instance of GC_ObjectModel
 	 * 
@@ -1304,5 +1307,10 @@ public:
 	 * Asserts that an Arraylet has true discontiguous layout
 	 */
 	void AssertDiscontiguousArrayletLayout(J9IndexableObject *objPtr);
+
+	/**
+	 * Asserts unreachable code if either Sparse Heap or double mapping is enabled
+	 */
+	void AssertContiguousArrayDataUnreachable();
 };
 #endif /* ARRAYLETOBJECTMODEL_ */

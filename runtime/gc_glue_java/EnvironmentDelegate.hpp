@@ -207,19 +207,28 @@ public:
 	postObjectMoveForCompact(omrobjectptr_t destinationObjectPtr, omrobjectptr_t sourceObjectPtr)
 	{
 		GC_ObjectModel *objectModel = &_extensions->objectModel;
+		GC_ArrayObjectModel *indexableObjectModel = &_extensions->indexableObjectModel;
 		if (_gcEnv.movedObjectHashCodeCache.hasBeenHashed && !_gcEnv.movedObjectHashCodeCache.hasBeenMoved) {
 			*(uint32_t*)((uintptr_t)destinationObjectPtr + objectModel->getHashcodeOffset(destinationObjectPtr)) = _gcEnv.movedObjectHashCodeCache.originalHashCode;
 			objectModel->setObjectHasBeenMoved(destinationObjectPtr);
 		}
 
 		if (_extensions->objectModel.isIndexable(destinationObjectPtr)) {
-			/* Updates internal field of indexable objects. Every indexable object have an extra field
-			 * that can be used to store any extra information about the indexable object. One use case is
-			 * OpenJ9 where we use this field to point to array data. In this case it will always point to
-			 * the address right after the header, in case of contiguous data it will point to the data
-			 * itself, and in case of discontiguous arraylet it will point to the first arrayiod. How to
-			 * updated dataAddr is up to the target language that must override fixupDataAddr */
-			_extensions->indexableObjectModel.fixupDataAddr(destinationObjectPtr);
+			/* If double mapping is enabled and the indexable object has been double mapped, there's no need to update the data pointer;
+			 * however, if either one of these statements is false than we must update it, because data pointer points to data within heap. */
+			bool shouldUpdateDataAddress = !indexableObjectModel->isSparseHeapEnabled();
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+			shouldUpdateDataAddress = shouldUpdateDataAddress && !indexableObjectModel->isDoubleMappingEnabled();
+#endif
+			if (shouldUpdateDataAddress || !indexableObjectModel->isIndexableObjectDoubleMapped(_extensions, (J9IndexableObject *)destinationObjectPtr)) {
+				/* Updates internal field of indexable objects. Every indexable object have an extra field
+				 * that can be used to store any extra information about the indexable object. One use case is
+				 * OpenJ9 where we use this field to point to array data. In this case it will always point to
+				 * the address right after the header, in case of contiguous data it will point to the data
+				 * itself, and in case of discontiguous arraylet it will point to the first arrayiod. How to
+				 * updated dataAddr is up to the target language that must override fixupDataAddr */
+				indexableObjectModel->fixupDataAddr(destinationObjectPtr);
+			}
 
 			if (_extensions->isVLHGC()) {
 				_extensions->indexableObjectModel.fixupInternalLeafPointersAfterCopy((J9IndexableObject *)destinationObjectPtr, (J9IndexableObject *)sourceObjectPtr);

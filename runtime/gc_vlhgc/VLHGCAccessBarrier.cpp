@@ -294,17 +294,16 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 		copyArrayCritical(vmThread, indexableObjectModel, functions, &data, arrayObject, isCopy);
 	} else if (!indexableObjectModel->isInlineContiguousArraylet(arrayObject)) {
 		/* an array having discontiguous extents is another reason to force the critical section to be a copy */
+		bool isContiguousDataEnabled = indexableObjectModel->isSparseHeapEnabled();
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+		isContiguousDataEnabled = isContiguousDataEnabled || indexableObjectModel->isDoubleMappingEnabled();
+#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 		MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(vmThread);
-		if (indexableObjectModel->isDoubleMappingEnabled()) {
+		if (isContiguousDataEnabled) {
 			fj9object_t *arrayoidPtr = indexableObjectModel->getArrayoidPointer(arrayObject);
 			if (indexableObjectModel->isArrayletDataDiscontiguous(arrayObject)) {
-				GC_SlotObject objectSlot(env->getOmrVM(), arrayoidPtr);
-				J9Object *firstLeafSlot = objectSlot.readReferenceFromSlot();
-				MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)_extensions->heapRegionManager->tableDescriptorForAddress(firstLeafSlot);
-				data = firstLeafRegionDescriptor->_arrayletDoublemapID.address;
-
-				if (NULL == data) {
+				data = indexableObjectModel->getDataAddrForDiscontiguous(arrayObject);
+				if ((NULL == data) || indexableObjectModel->isAddressWithinHeap(_extensions, data)) {
 					/* Doublemap failed, but we still need to continue execution; therefore fallback to previous approach */
 					copyArrayCritical(vmThread, indexableObjectModel, functions, &data, arrayObject, isCopy);
 				}
@@ -322,9 +321,7 @@ MM_VLHGCAccessBarrier::jniGetPrimitiveArrayCritical(J9VMThread* vmThread, jarray
 				data = (void *)arrayoidPtr;
 				Assert_MM_true((0 == indexableObjectModel->numArraylets(arrayObject)) && (0 == indexableObjectModel->getSizeInElements(arrayObject)));
 			}
-		} else
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-		{
+		} else {
 			copyArrayCritical(vmThread, indexableObjectModel, functions, &data, arrayObject, isCopy);
 		}
 	} else {
@@ -382,16 +379,18 @@ MM_VLHGCAccessBarrier::jniReleasePrimitiveArrayCritical(J9VMThread* vmThread, ja
 		copyBackArrayCritical(vmThread, indexableObjectModel, functions, elems, &arrayObject, mode);
 	} else if (!indexableObjectModel->isInlineContiguousArraylet(arrayObject)) {
 		/* an array having discontiguous extents is another reason to force the critical section to be a copy */
+		bool isContiguousDataEnabled = indexableObjectModel->isSparseHeapEnabled();
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+		isContiguousDataEnabled = isContiguousDataEnabled || indexableObjectModel->isDoubleMappingEnabled();
+#endif
 		MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(vmThread);
-		if (indexableObjectModel->isDoubleMappingEnabled()) {
+		if (isContiguousDataEnabled) {
 			fj9object_t *arrayoidPtr = indexableObjectModel->getArrayoidPointer(arrayObject);
 			if (indexableObjectModel->isArrayletDataDiscontiguous(arrayObject)) {
-				GC_SlotObject objectSlot(env->getOmrVM(), arrayoidPtr);
-				J9Object *firstLeafSlot = objectSlot.readReferenceFromSlot();
-				MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)_extensions->heapRegionManager->tableDescriptorForAddress(firstLeafSlot);
+				void *data = NULL;
+				data = indexableObjectModel->getDataAddrForDiscontiguous(arrayObject);
 
-				if (NULL == firstLeafRegionDescriptor->_arrayletDoublemapID.address) {
+				if ((NULL == data) || indexableObjectModel->isAddressWithinHeap(_extensions, data)) {
 					/* Doublemap failed, but we still need to continue execution; therefore fallback to previous approach */
 					copyBackArrayCritical(vmThread, indexableObjectModel, functions, elems, &arrayObject, mode);
 				}
@@ -411,9 +410,7 @@ MM_VLHGCAccessBarrier::jniReleasePrimitiveArrayCritical(J9VMThread* vmThread, ja
 				/* Possible to reach here if arraylet has no leaves */
 				Assert_MM_true((0 == indexableObjectModel->numArraylets(arrayObject)) && (0 == indexableObjectModel->getSizeInElements(arrayObject)));
 			}
-		} else
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-		{
+		} else {
 			copyBackArrayCritical(vmThread, indexableObjectModel, functions, elems, &arrayObject, mode);
 		}
 	} else {
@@ -489,15 +486,15 @@ MM_VLHGCAccessBarrier::jniGetStringCritical(J9VMThread* vmThread, jstring str, j
 	if (alwaysCopyInCritical || isCompressed) {
 		copyStringCritical(vmThread, indexableObjectModel, functions, &data, javaVM, valueObject, stringObject, isCopy, isCompressed);
 	} else if (!indexableObjectModel->isInlineContiguousArraylet(valueObject)) {
+		bool isContiguousDataEnabled = indexableObjectModel->isSparseHeapEnabled();
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+		isContiguousDataEnabled = isContiguousDataEnabled || indexableObjectModel->isDoubleMappingEnabled();
+#endif
 		MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(vmThread);
-		if (indexableObjectModel->isDoubleMappingEnabled()) {
+		if (isContiguousDataEnabled) {
 			fj9object_t *arrayoidPtr = indexableObjectModel->getArrayoidPointer(valueObject);
 			if (indexableObjectModel->isArrayletDataDiscontiguous(valueObject)) {
-				GC_SlotObject objectSlot(env->getOmrVM(), arrayoidPtr);
-				J9Object *firstLeafSlot = objectSlot.readReferenceFromSlot();
-				MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)_extensions->heapRegionManager->tableDescriptorForAddress(firstLeafSlot);
-				data = (jchar *)firstLeafRegionDescriptor->_arrayletDoublemapID.address;
+				data = (jchar *)indexableObjectModel->getDataAddrForDiscontiguous(valueObject);
 
 				if (NULL == data) {
 					/* Doublemap failed, but we still need to continue execution; therefore fallback to previous approach */
@@ -517,9 +514,7 @@ MM_VLHGCAccessBarrier::jniGetStringCritical(J9VMThread* vmThread, jstring str, j
 				data = (jchar *)arrayoidPtr;
 				Assert_MM_true((0 == indexableObjectModel->numArraylets(valueObject)) && (0 == indexableObjectModel->getSizeInElements(valueObject)));
 			}
-		} else
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-		{
+		} else {
 			copyStringCritical(vmThread, indexableObjectModel, functions, &data, javaVM, valueObject, stringObject, isCopy, isCompressed);
 		}
 	} else {
@@ -572,15 +567,15 @@ MM_VLHGCAccessBarrier::jniReleaseStringCritical(J9VMThread* vmThread, jstring st
 		freeStringCritical(vmThread, functions, elems);
 	} else if (!indexableObjectModel->isInlineContiguousArraylet(valueObject)) {
 		/* an array having discontiguous extents can use double mapping if enabled in the critical section */
+		bool isContiguousDataEnabled = indexableObjectModel->isSparseHeapEnabled();
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
-		MM_EnvironmentVLHGC *env = MM_EnvironmentVLHGC::getEnvironment(vmThread);
-		if (indexableObjectModel->isDoubleMappingEnabled()) {
-			fj9object_t *arrayoidPtr = indexableObjectModel->getArrayoidPointer(valueObject);
+		isContiguousDataEnabled = isContiguousDataEnabled || indexableObjectModel->isDoubleMappingEnabled();
+#endif
+		if (isContiguousDataEnabled) {
 			if (indexableObjectModel->isArrayletDataDiscontiguous(valueObject)) {
-				GC_SlotObject objectSlot(env->getOmrVM(), arrayoidPtr);
-				J9Object *firstLeafSlot = objectSlot.readReferenceFromSlot();
-				MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)_extensions->heapRegionManager->tableDescriptorForAddress(firstLeafSlot);
-				if (NULL == firstLeafRegionDescriptor->_arrayletDoublemapID.address) {
+				void *data = NULL;
+				data = indexableObjectModel->getDataAddrForDiscontiguous(valueObject);
+				if (NULL == data) {
 					/* Doublemap failed, but we still need to continue execution; therefore fallback to previous approach */
 					freeStringCritical(vmThread, functions, elems);
 				}
@@ -591,9 +586,7 @@ MM_VLHGCAccessBarrier::jniReleaseStringCritical(J9VMThread* vmThread, jstring st
 				/* Possible to reach here if arraylet has no leaves */
 				Assert_MM_true((0 == indexableObjectModel->numArraylets(valueObject)) && (0 == indexableObjectModel->getSizeInElements(valueObject)));
 			}
-		} else
-#endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
-		{
+		} else {
 			/* an array having discontiguous extents is another reason to force the critical section to be a copy in case double mapping is desabled */
 			freeStringCritical(vmThread, functions, elems);
 		}

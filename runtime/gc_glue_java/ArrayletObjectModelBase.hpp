@@ -48,6 +48,7 @@ protected:
 #if defined(OMR_GC_COMPRESSED_POINTERS) && defined(OMR_GC_FULL_POINTERS)
 	bool _compressObjectReferences;
 #endif /* defined(OMR_GC_COMPRESSED_POINTERS) && defined(OMR_GC_FULL_POINTERS) */
+	bool _enableSparseHeap;
 	OMR_VM *_omrVM; 	/**< used so that we can pull the arrayletLeafSize and arrayletLeafLogSize for arraylet sizing calculations */
 	void * _arrayletRangeBase; /**< The base heap range of where discontiguous arraylets are allowed. */
 	void * _arrayletRangeTop; /**< The top heap range of where discontiguous arraylets are allowed. */
@@ -117,6 +118,23 @@ public:
 	}
 
 	/**
+	 * Returns if a indexable object is discontiguous or contiguous.
+	 * @param arrayPtr Pointer to the indexable object whose size is required
+	 * @return true if arraylet is discontiguous, false otherwise
+	 */
+	MMINLINE bool
+	isArrayletDiscontiguous(J9IndexableObject *arrayPtr)
+	{
+		UDATA size = 0;
+		if (compressObjectReferences()) {
+			size = ((J9IndexableObjectContiguousCompressed *)arrayPtr)->size;
+		} else {
+			size = ((J9IndexableObjectContiguousFull *)arrayPtr)->size;
+		}
+		return 0 == size;
+	}
+
+	/**
 	 * Sets size in elements of a contiguous indexable object .
 	 * @param arrayPtr Pointer to the indexable object whose size is required
 	 * @param size Size in elements to set.
@@ -177,14 +195,13 @@ public:
 	MMINLINE void
 	setEnableSparseHeap(bool enableSparseHeap)
 	{
-		//_enableSparseHeap = enableSparseHeap;
+		_enableSparseHeap = enableSparseHeap;
 	}
 
 	MMINLINE bool
 	isSparseHeapEnabled()
 	{
-		//return _enableSparseHeap;
-		return false;
+		return _enableSparseHeap;
 	}
 
 	/**

@@ -34,6 +34,8 @@
 #include "JavaObjectAllocationModel.hpp"
 #include "MemorySpace.hpp"
 
+class MM_HeapRegionDescriptorVLHGC;
+
 /**
  * Class definition for the array object allocation model.
  */
@@ -70,6 +72,23 @@ private:
 	 * @return initialized arraylet spine with its arraylet pointers initialized.
 	 */
 	MMINLINE J9IndexableObject *layoutDiscontiguousArraylet(MM_EnvironmentBase *env, J9IndexableObject *spine);
+
+#if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
+	/**
+	 * For discontiguous arraylet that will be double mapped. Even though this arraylet is large enough to be
+	 * discontiguous, its true layout is InlineContiguous. Arraylet leaves still need to be created and initialized,
+	 * even though they won't be used.
+	 * @return initialized arraylet spine with its arraylet pointers initialized.
+	 */
+	MMINLINE J9IndexableObject *reserveLeavesForContiguousArraylet(MM_EnvironmentBase *env, J9IndexableObject *spine);
+#endif /* defined(J9VM_GC_ENABLE_DOUBLE_MAP) */
+
+	/**
+	 *
+	 */
+	MMINLINE J9IndexableObject *getSparseAddressAndDecommitLeaves(MM_EnvironmentBase *env, J9IndexableObject *spine);
+
+
 
 protected:
 
@@ -140,7 +159,7 @@ public:
 	 * @param objectPtr indexable object spine
 	 * @return the contiguous address pointer
 	 */
-	void *doubleMapArraylets(MM_EnvironmentBase *env, J9Object *objectPtr, void *preferredAddress);
+	void *doubleMapArraylets(MM_EnvironmentBase *env, J9Object *objectPtr, void **arrayletLeaveAddrs, MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor, void *preferedAddress);
 #endif /* J9VM_GC_ENABLE_DOUBLE_MAP */
 
 	/**

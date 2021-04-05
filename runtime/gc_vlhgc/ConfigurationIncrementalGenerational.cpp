@@ -52,6 +52,7 @@
 #include "PhysicalArenaRegionBased.hpp"
 #include "PhysicalSubArenaRegionBased.hpp"
 #include "SweepPoolManagerVLHGC.hpp"
+#include  "SparseVirtualMemory.hpp"
 
 
 #define TAROK_MINIMUM_REGION_SIZE_BYTES (512 * 1024)
@@ -92,6 +93,12 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 {
 	MM_GCExtensions *extensions = MM_GCExtensions::getExtensions(env);
 
+#if defined(OSX)
+	if (extensions->isSparseHeapRequested) {
+		extensions->isArrayletDoubleMapRequested = true;
+	}
+#endif /* defined(OSX) */
+
 	MM_Heap *heap = MM_HeapVirtualMemory::newInstance(env, extensions->heapAlignment, heapBytesRequested, regionManager);
 	if (NULL == heap) {
 		return NULL;
@@ -110,8 +117,14 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 	 * want, and that's memfd_create(2); however that's only supported in glibc 2.27. We
 	 * also need to check if region size is a bigger or equal to multiple of page size.
 	 *
+	 * If both double mapping and sparse heap are requested, sparse heap takes precedence
+	 * over double mapping.
 	 */
-	if (extensions->isArrayletDoubleMapRequested && extensions->isArrayletDoubleMapAvailable) {
+#if defined(OSX)
+	if ((extensions->isArrayletDoubleMapRequested || extensions->isSparseHeapRequested) && extensions->isArrayletDoubleMapAvailable) {
+#else /* defined(OSX) */
+	if (extensions->isArrayletDoubleMapRequested && !extensions->isSparseHeapRequested && extensions->isArrayletDoubleMapAvailable) {
+#endif /* defined(OSX) */
 		uintptr_t pagesize = heap->getPageSize();
 		if (!extensions->memoryManager->isLargePage(env, pagesize) || (pagesize <= extensions->getOmrVM()->_arrayletLeafSize)) {
 			extensions->indexableObjectModel.setEnableDoubleMapping(true);
@@ -153,6 +166,16 @@ MM_ConfigurationIncrementalGenerational::createHeapWithManager(MM_EnvironmentBas
 		}
 	}
 #endif /* defined(OMR_GC_VLHGC_CONCURRENT_COPY_FORWARD) */
+
+	if (heap && extensions->isSparseHeapRequested) {
+		/* Create off-heap */
+		// TODO: Should we pass heap like this? Or should we create off-heap only after we assign extensions->heap = heap; ?
+		MM_SparseVirtualMemory *sparseVM = MM_SparseVirtualMemory::newInstance(env, OMRMEM_CATEGORY_MM_RUNTIME_HEAP, heap);
+		if (NULL != sparseVM) {
+			extensions->sparseVM = sparseVM;
+			extensions->indexableObjectModel.setEnableSparseHeap(true);
+		}
+	}
 
 	return heap;
 }

@@ -589,7 +589,7 @@ MM_WriteOnceCompactor::compact(MM_EnvironmentVLHGC *env)
 
 	if (J9MODRON_HANDLE_NEXT_WORK_UNIT(env)) {
 		/* now, correct any leaf pages to point at their moved spines - this must be called AFTER (aka:  post-sync) we are sure to have finished fixing up leaf contents since it relies on knowing exactly which version of the spine pointer it sees */
-		fixupArrayletLeafRegionSpinePointers();
+		fixupArrayletLeafRegionSpinePointers(env);
 	}
 
 	timeTemp = j9time_hires_clock();
@@ -1894,7 +1894,7 @@ MM_WriteOnceCompactor::recycleFreeRegionsAndFixFreeLists(MM_EnvironmentVLHGC *en
 }
 
 void
-MM_WriteOnceCompactor::fixupArrayletLeafRegionSpinePointers()
+MM_WriteOnceCompactor::fixupArrayletLeafRegionSpinePointers(MM_EnvironmentVLHGC *env)
 {
 	GC_HeapRegionIteratorVLHGC regionIterator(_regionManager);
 	MM_HeapRegionDescriptorVLHGC *region = NULL;
@@ -1916,7 +1916,7 @@ MM_WriteOnceCompactor::fixupArrayletLeafRegionSpinePointers()
 				Assert_MM_true( newSpineRegion->containsObjects() );
 				if(spineRegion != newSpineRegion) {
 					/* we need to move the leaf to another region's leaf list since its spine has moved */
-					region->_allocateData.removeFromArrayletLeafList();
+					region->_allocateData.removeFromArrayletLeafList(env);
 					region->_allocateData.addToArrayletLeafList(newSpineRegion);
 				}
 				region->_allocateData.setSpine(newSpine);
