@@ -1207,8 +1207,9 @@ public:
 	MMINLINE void *
 	getDataPointerForContiguous(J9IndexableObject *arrayPtr)
 	{
-		//return (void *)((uintptr_t)arrayPtr + contiguousHeaderSize());
-		return (void *)((J9IndexableObjectContiguous *)arrayPtr)->dataAddr;
+		return compressObjectReferences()
+				? ((J9IndexableObjectContiguousCompressed *)arrayPtr)->dataAddr
+				: ((J9IndexableObjectContiguousFull *)arrayPtr)->dataAddr;
 	}
 
 

@@ -3943,7 +3943,7 @@ private:
 				env->_copyForwardStats._doubleMappedArrayletsCleared += 1;
 				OMRPORT_ACCESS_FROM_OMRVM(_omrVM);
 				if (sparseHeapEnabled) {
-					_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(dataAddr);
+					_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(env, dataAddr);
 				} else {
 					omrvmem_release_double_mapped_region(identifier->address, identifier->size, identifier);
 				}
@@ -3971,7 +3971,7 @@ private:
 			void *dataAddr = _extensions->indexableObjectModel.getDataAddrForIndexableObject((J9IndexableObject *)realObjPtr);
 			if (NULL == forwardedObject) {
 				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
-				sparseVM->removeObjFromPoolAndFreeSparseRegion(dataAddr);
+				sparseVM->removeObjFromPoolAndFreeSparseRegion(_env, dataAddr);
 			} else {
 				/* There might be the case that GC finds a floating arraylet, which was a result of an allocation
 				 * failure (reason why this GC cycle is happening).

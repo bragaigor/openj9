@@ -1240,7 +1240,7 @@ private:
 			OMRPORT_ACCESS_FROM_OMRVM(_omrVM);
 			if (_extensions->indexableObjectModel.isSparseHeapEnabled()) {
 				void *dataAddr = _extensions->indexableObjectModel.getDataAddrForIndexableObject((J9IndexableObject *)objectPtr);
-				_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(dataAddr);
+				_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(_env, dataAddr);
 			} else {
 				omrvmem_release_double_mapped_region(identifier->address, identifier->size, identifier);
 			}
@@ -1251,7 +1251,7 @@ private:
 	virtual void doSparseHeapObject(J9Object *objectPtr) {
 		if (!_markingScheme->isMarked(objectPtr)) {
 			void *dataAddr = _extensions->indexableObjectModel.getDataAddrForIndexableObject((J9IndexableObject *)objectPtr);
-			_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(dataAddr);
+			_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(_env, dataAddr);
 		}
 	}
 

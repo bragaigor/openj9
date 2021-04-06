@@ -114,10 +114,14 @@ typedef struct J9IndexableObject* mm_j9array_t;
 		: (&(((elemType*)(((UDATA*)((J9IndexableObjectDiscontiguousFull *)array + 1))[((U_32)index)/((javaVM)->arrayletLeafSize/sizeof(elemType))]))[((U_32)index)%((javaVM)->arrayletLeafSize/sizeof(elemType))])))
 
 #define J9JAVAARRAYCONTIGUOUS_EA(vmThread, array, index, elemType) \
-	(&((elemType*)((((J9IndexableObjectContiguous *)(array))->dataAddr)))[(index)])
+	(J9VMTHREAD_COMPRESS_OBJECT_REFERENCES(vmThread) \
+		 ? (&((elemType*)((((J9IndexableObjectContiguousCompressed *)(array))->dataAddr)))[(index)]) \
+		 : (&((elemType*)((((J9IndexableObjectContiguousFull *)(array))->dataAddr)))[(index)]))
 
 #define J9JAVAARRAYCONTIGUOUS_EA_VM(javaVM, array, index, elemType) \
-	(&((elemType*)((((J9IndexableObjectContiguous *)(array))->dataAddr)))[(index)])
+	(J9JAVAVM_COMPRESS_OBJECT_REFERENCES(javaVM) \
+		 ? (&((elemType*)((((J9IndexableObjectContiguousCompressed *)(array))->dataAddr)))[(index)]) \
+		 : (&((elemType*)((((J9IndexableObjectContiguousFull *)(array))->dataAddr)))[(index)]))
 
 #define J9ISCONTIGUOUSARRAY(vmThread, array) \
 	(J9VMTHREAD_COMPRESS_OBJECT_REFERENCES(vmThread) \
