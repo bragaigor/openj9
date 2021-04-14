@@ -206,7 +206,7 @@ MM_HeapRegionDataForAllocate::removeFromArrayletLeafList(MM_EnvironmentVLHGC *en
 
 	if (!extensions->indexableObjectModel.isSparseHeapEnabled()) {
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
-		if (extensions->indexableObjectModel.isDoubleMappingEnabled()) {
+		if (!extensions->indexableObjectModel.isDoubleMappingEnabled()) {
 			void *leafAddress = _region->getLowAddress();
 			const UDATA arrayletLeafSize = env->getOmrVM()->_arrayletLeafSize;
 			int fd = extensions->getHeap()->getHeapFileDescriptor();
@@ -232,7 +232,7 @@ MM_HeapRegionDataForAllocate::removeFromArrayletLeafList(MM_EnvironmentVLHGC *en
 		}
 #endif
 	}
-	
+
 	previous->_allocateData._nextArrayletLeafRegion = next;
 	if (NULL != next) {
 		Assert_MM_true(next->isArrayletLeaf());

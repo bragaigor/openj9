@@ -3935,14 +3935,16 @@ private:
 			objectPtr = forwardedHeader.getForwardedObject();
 
 			void *forwardedObject = forwardedHeader.getForwardedObject();
-			void *realObjPtr = NULL == forwardedObject ? objectPtr : forwardedObject;
-			void *dataAddr = _extensions->indexableObjectModel.getDataAddrForIndexableObject((J9IndexableObject *)realObjPtr);
+			void *dataAddr = NULL;
+			if (NULL != forwardedObject) {
+				dataAddr = _extensions->indexableObjectModel.getDataAddrForIndexableObject((J9IndexableObject *)forwardedObject);
+			}
 			bool sparseHeapEnabled = _extensions->indexableObjectModel.isSparseHeapEnabled();
 			if (NULL == forwardedObject) {
 				Assert_MM_mustBeClass(_extensions->objectModel.getPreservedClass(&forwardedHeader));
 				env->_copyForwardStats._doubleMappedArrayletsCleared += 1;
 				OMRPORT_ACCESS_FROM_OMRVM(_omrVM);
-				if (sparseHeapEnabled) {
+				if (sparseHeapEnabled && NULL != dataAddr) {
 					_extensions->sparseVM->removeObjFromPoolAndFreeSparseRegion(env, dataAddr);
 				} else {
 					omrvmem_release_double_mapped_region(identifier->address, identifier->size, identifier);

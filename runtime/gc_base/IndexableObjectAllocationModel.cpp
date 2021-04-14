@@ -171,13 +171,13 @@ MM_IndexableObjectAllocationModel::initializeIndexableObject(MM_EnvironmentBase 
 			if (indexableObjectModel->isSparseHeapEnabled()) {
 				/* We still need to create leaves for discontiguous arrays that will be allocated at off-heap */
 				spine = getSparseAddressAndDecommitLeaves(env, spine);
-				Assert_MM_true(1 < _numberOfArraylets);
+				Assert_MM_true(1 <= _numberOfArraylets);
 			}
 #if defined(J9VM_GC_ENABLE_DOUBLE_MAP)
 			else if (indexableObjectModel->isDoubleMappingEnabled()) {
 				/* We still need to create leaves for discontiguous arrays that will be double mapped so that we reserve the appropriate regions in the heap */
 				spine = reserveLeavesForContiguousArraylet(env, spine);
-				Assert_MM_true(1 < _numberOfArraylets);
+				Assert_MM_true(1 <= _numberOfArraylets);
 			}
 #endif
 		}
@@ -388,22 +388,6 @@ MM_IndexableObjectAllocationModel::reserveLeavesForContiguousArraylet(MM_Environ
 			break;
 		}
 
-		/* Disable region for reads and writes, since that'll be done through the contiguous double mapped region */
-		int fd = extensions->getHeap()->getHeapFileDescriptor();
-		void *modifiedLeaf = mmap(
-				leaf,
-				arrayletLeafSize,
-				PROT_NONE,
-				MAP_SHARED | MAP_FIXED,
-				fd, // Even though head is associated to file descriptor this should not matter
-				0);
-
-		if (modifiedLeaf == MAP_FAILED) {
-			printf("Failed to disable leaf region. leaf: %p, fd: %d, errno: %d, str: %s\n", leaf, fd, errno, strerror(errno));
-		} else if (modifiedLeaf != leaf) {
-			printf("Failed to disable leaf region. Expected address: %p, actual: %p, errno: %d\n", leaf, modifiedLeaf, errno);
-		}
-
 		arrayletLeaveAddrs[arrayoidIndex] = leaf;
 		if (0 == arrayoidIndex) {
 			firstLeafRegionDescriptor = (MM_HeapRegionDescriptorVLHGC *)extensions->getHeap()->getHeapRegionManager()->tableDescriptorForAddress(leaf);
@@ -547,9 +531,6 @@ void *
 MM_IndexableObjectAllocationModel::doubleMapArraylets(MM_EnvironmentBase *env, J9Object *objectPtr, void **arrayletLeaveAddrs, MM_HeapRegionDescriptorVLHGC *firstLeafRegionDescriptor, void *preferredAddress)
 {
 	MM_GCExtensions *extensions = MM_GCExtensions::getExtensions(env);
-	J9JavaVM *javaVM = extensions->getJavaVM();
-
-	GC_ArrayletLeafIterator arrayletLeafIterator(javaVM, (J9IndexableObject *)objectPtr);
 	MM_Heap *heap = extensions->getHeap();
 	UDATA arrayletLeafSize = env->getOmrVM()->_arrayletLeafSize;
 	UDATA arrayletLeafCount = MM_Math::roundToCeiling(arrayletLeafSize, _dataSize) / arrayletLeafSize;
